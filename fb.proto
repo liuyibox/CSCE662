@@ -36,6 +36,7 @@ import "google/protobuf/timestamp.proto";
 // The messenger service definition.
 service FBChatServer {
   rpc Login (ClientRequest) returns (ServerReply) {}
+  rpc Connect (ClientRequest) returns (ServerReply) {}
   rpc List (ClientRequest) returns (ShowList) {}
   rpc Join (ClientRequest) returns (ServerReply) {}
   rpc Leave (ClientRequest) returns (ServerReply) {}

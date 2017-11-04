@@ -43,6 +43,12 @@ struct Client{
   ServerReaderWriter<Post, Post>* stream = 0;
 };
 
+struct primaryWorkerInfo{
+    std::string hostname;
+    std::string port;
+    int connected_clients;
+}p_worker_info[2] = {{"localhost","6005",0},{"localhost","6008",0}};
+
 std::vector<Client> client_db; // read from local file when we start server
 bool isMaster = false;
 bool isLeader = false;
@@ -250,6 +256,22 @@ class ServerConnectImpl final:public RegisterServer::Service{
 //Communication with client
 class FBChatServerImpl final : public FBChatServer::Service {
     
+    Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+        std::cout<< "Master side"<<std::endl;
+        std::string primaryWorkerAddress;
+        if(p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
+            primaryWorkerAddress = p_worker_info[0].hostname + ":" + p_worker_info[0].port;
+            p_worker_info[0].connected_clients++;
+            
+        }
+        else{
+            primaryWorkerAddress = p_worker_info[1].hostname + ":" + p_worker_info[1].port;
+            p_worker_info[1].connected_clients++;
+        }
+      reply->set_message(primaryWorkerAddress);
+      return Status::OK;
+    }
+    
   //Sends the list of total rooms and joined rooms to the client
   Status List(ServerContext* context, const ClientRequest* request, ShowList* showlist) override {
     Client user = client_db[find_user(request->username())];
@@ -320,6 +342,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
 
   //Called when the client startd and checks whether their username is taken or not
   Status Login(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+      std::cout<< "New Master side"<<std::endl;
     Client c;
     std::string username = request->username();
     int idx = find_user(username);

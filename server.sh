@@ -48,4 +48,5 @@ else
 	wait $pid1 $pid2 $pid3
 	.
 fi
+echo "check"
 

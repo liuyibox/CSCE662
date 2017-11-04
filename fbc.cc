@@ -118,6 +118,23 @@ void Leave(string username1, string username2){
 	abort();
 }
 
+//connect to master first
+string Connect(string uername){
+	ClientContext context;
+	ServerReply reply;
+	ClientRequest request;  
+ 
+	request.set_username(username);
+
+	Status status = clientStub->Connect(&context, request, &reply);
+
+	if(status.ok()) return reply.message();
+    cout << status.error_details()<< endl;
+	//if Connect failed
+	cout<< "failed at connecting to server\n";
+	abort();
+}
+
 //user login
 string Login(string username){
 
@@ -235,11 +252,21 @@ int main(int argc, char** argv) {
 	string info_connection = hostname + ":" + port_number;
 
 	//setup the channel from client to server
-	shared_ptr<Channel> channel = grpc::CreateChannel(info_connection, grpc::InsecureChannelCredentials());
+	shared_ptr<Channel> channel_master = grpc::CreateChannel(info_connection, grpc::InsecureChannelCredentials());
 
-	//create a client object
-	Client *connect_to_server = new Client(channel, username); 
+	//create a client object to connect to master
+	Client *connect_to_master = new Client(channel_master, username); 
 
+    cout << "Connecting to Master \n";
+    string primary_worker_address = connect_to_master->Connect(username);
+    cout << primary_worker_address << endl;
+    
+    //get the port of Primary Worker and connect to the Primary Worker
+    cout << "Redirecting to Primary Worker\n";
+    shared_ptr<Channel> channel_primary = grpc::CreateChannel(primary_worker_address, grpc::InsecureChannelCredentials());
+    
+    Client *connect_to_server = new Client(channel_primary, username);
+    
 	//request to login
 	string login_reply = connect_to_server->Login(username);
 
