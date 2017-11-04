@@ -6,6 +6,7 @@ echo ""
 
 echo $1
 if [ $1 == "masterServer" ]; then
+
 	echo "master server has 4 master processes now:"
 	./fbsd -l 1 -p 6001 -h masterServer -m 1 -i 0 &
 	export pid1=$!		
@@ -19,7 +20,16 @@ if [ $1 == "masterServer" ]; then
 	./fbsd -c 1 -p 6004 -h masterServer -m 1 -i 0 &
 	export pid4=$!
 	echo $pid4
-	wait $pid1 $pid2 $pid3 $pid4
+#	wait $pid1 $pid2 $pid3 $pid4 &
+	control_c(){
+		kill $pid1
+		kill $pid2
+		kill $pid3
+		kill $pid4
+		kill -9 $$
+	}
+	trap control_c SIGINT
+	while true; do read x; done
 	.
 elif [ $1 == "server1" ]; then
 	echo "server1 has 3 processes now:"
@@ -32,7 +42,15 @@ elif [ $1 == "server1" ]; then
 	./fbsd -c 1 -p 6007 -h server1 -i 1&
 	export pid3=$!
 	echo $pid3
-	wait $pid1 $pid2 $pid3
+#	wait $pid1 $pid2 $pid3
+	control_c(){
+		kill $pid1
+		kill $pid2
+		kill $pid3
+		kill -9 $$
+	}
+	trap control_c SIGINT
+	while true; do read x; done
 	.
 else
 	echo "server2 has 3 processes now:"
@@ -45,7 +63,15 @@ else
 	./fbsd -c 1 -p 6010 -h server2 -i 2 &
 	export pid3=$!
 	echo $pid3
-	wait $pid1 $pid2 $pid3
+#	wait $pid1 $pid2 $pid3
+	control_c(){
+		kill $pid1
+		kill $pid2
+		kill $pid3
+		kill -9 $$
+	}
+	trap control_c SIGINT
+	while true; do read x; done
 	.
 fi
 
