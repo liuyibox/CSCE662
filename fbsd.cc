@@ -47,7 +47,7 @@ struct primaryWorkerInfo{
     std::string hostname;
     std::string port;
     int connected_clients;
-}p_worker_info[2] = {{"localhost","6005",0},{"localhost","6008",0}};
+}p_worker_info[3] = {{"localhost","6005",0},{"localhost","6008",0},{"localhost","6004",0}};
 
 std::vector<Client> client_db; // read from local file when we start server
 bool isMaster = false;
@@ -55,6 +55,7 @@ bool isLeader = false;
 std::string localPort="10000";
 bool isServerConnector=false;
 std::string localHostName="localhost";
+
 std::string masterServerAddr="localhost";
 std::string masterConnectorPort="6004";
 //string ServerHostAddr[3];
@@ -83,7 +84,8 @@ void UpdateDatabase(Client *client){
     }
     
     //find the old data for the client, delete it and add new data to the tail of the file
-    std::fstream file("client_database.txt");
+    std::string filename = localHostName + "client_database.txt";
+    std::fstream file(filename);
     std::string line;
     std::ofstream outfile("in2.txt",std::ios::out|std::ios::trunc);
     while(!file.eof())
@@ -98,7 +100,7 @@ void UpdateDatabase(Client *client){
     outfile.close();
     file.close();
     
-    std::ofstream outfile1("client_database.txt",std::ios::out|std::ios::trunc);
+    std::ofstream outfile1(filename,std::ios::out|std::ios::trunc);
     std::fstream file1("in2.txt");
     while(!file1.eof())
     {
@@ -115,7 +117,8 @@ void UpdateDatabase(Client *client){
 //When server start, we read from client database
 //deserialize each data and store it to memory(client_databae)
 void LoadDatabase(){
-    std::fstream file1("client_database.txt");
+    std::string filename = localHostName + "client_database.txt";
+    std::fstream file1(filename);
     std::string line;
     
     //we need to read database 2 times
@@ -135,7 +138,7 @@ void LoadDatabase(){
     file1.close();
     
     //2nd
-    std::fstream file2("client_database.txt");
+    std::fstream file2(filename);
     while(!file2.eof())
     {
          if(std::getline(file2,line)){
@@ -184,7 +187,9 @@ bool CheckFile(std::string name){
 //and we should write the newest post in the head of the file
 void ModifyTimeLine(std::string msg, std::string username){
     
-    std::fstream file(username + ".txt");
+    std::string filename = localHostName + username + ".txt";
+    
+    std::fstream file(filename);
     std::string line;
     std::ofstream outfile("in2.txt",std::ios::out|std::ios::trunc);
     outfile << msg << '\n';
@@ -196,8 +201,9 @@ void ModifyTimeLine(std::string msg, std::string username){
     }
     outfile.close();
     file.close();
-    std::string temp = username + ".txt";
-    const char *k = temp.c_str();
+    //std::string temp = username + ".txt";
+    //const char *k = temp.c_str();
+    const char *k = filename.c_str();
     rename(k, "del.txt");
     rename("in2.txt", k);
     remove("del.txt");//Delete temp txt
@@ -342,16 +348,17 @@ class FBChatServerImpl final : public FBChatServer::Service {
 
   //Called when the client startd and checks whether their username is taken or not
   Status Login(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
-      std::cout<< "New Master side"<<std::endl;
+      std::cout<< "Primary Worker side"<<std::endl;
     Client c;
     std::string username = request->username();
+    std::string filename = localHostName + username +".txt";
     int idx = find_user(username);
     if(idx == -1){  // first timelogin
       c.username = username;
       c.connect_status = true;
       client_db.push_back(c);
-      if(!CheckFile(username + ".txt")){
-          std::ofstream fout(username + ".txt",std::ios::out);
+      if(!CheckFile(filename)){
+          std::ofstream fout(filename,std::ios::out);
           fout.close();
       }
       reply->set_message("Login Successful!");
@@ -363,8 +370,8 @@ class FBChatServerImpl final : public FBChatServer::Service {
         reply->set_message("Invalid Username");
         }
       else{
-          if(!CheckFile(username + ".txt")){
-              std::ofstream fout(username + ".txt",std::ios::out);
+          if(!CheckFile(filename)){
+              std::ofstream fout(filename,std::ios::out);
               fout.close();
           }
         std::string msg = "Welcome Back " + user->username;
@@ -390,7 +397,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
       c = &client_db[user_index];
       
       
-      std::string filename = username+ ".txt";
+      std::string filename = username + ".txt";
       google::protobuf::Timestamp tp = post.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(tp);
       std::string fileinput = username + " :: " + time + " :: " +post.content();
@@ -444,6 +451,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
 };
 
 void connectSetup(){
+    
 
 	if(isMaster==false && isServerConnector==true){
 		std::string server_register_connection = masterServerAddr+":"+masterConnectorPort;
@@ -452,8 +460,6 @@ void connectSetup(){
 		std::string serverRegisterReply = server_connect->ServerRegister();
 		std::cout << serverRegisterReply << std::endl;
 	}
-	
-
 
 	if(isMaster==true && isServerConnector==true){
 		std::string server_address = "0.0.0.0:"+localPort;
@@ -524,8 +530,9 @@ int main(int argc, char** argv) {
 	connectSetup();
 
   //cheack if database file is existed or not
-         if(!CheckFile("client_database.txt")){
-          std::ofstream fout("client_database.txt",std::ios::out);
+    std::string filename = localHostName + "client_database.txt";
+         if(!CheckFile(filename)){
+          std::ofstream fout(filename,std::ios::out);
           fout.close();
       }
       
