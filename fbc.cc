@@ -168,8 +168,9 @@ void Chat (string username) {
 			string chat_input;
 			Post chat_msg;
 
-			//
+			
 			while(getline(cin, chat_input)){
+                
 				chat_msg = msg_setup(username, chat_input);
 				read_write->Write(chat_msg);
         		}

@@ -34,7 +34,9 @@ using assignment2::ClientRequest;
 using assignment2::ServerReply;
 using assignment2::FBChatServer;
 using assignment2::RegisterServer;
+using assignment2::DataSync;
 
+class ServerConnect;
 
 struct Client{
   std::string username;
@@ -55,6 +57,10 @@ bool isLeader = false;
 std::string localPort="10000";
 bool isServerConnector=false;
 std::string localHostName="localhost";
+
+ServerConnect* masterPrimaryWorker;
+ServerConnect* server1PrimaryWorker;
+ServerConnect* server2PrimaryWorker;
 
 std::string masterServerAddr="localhost";
 std::string masterConnectorPort="6004";
@@ -117,6 +123,7 @@ void UpdateDatabase(Client *client){
 //When server start, we read from client database
 //deserialize each data and store it to memory(client_databae)
 void LoadDatabase(){
+    client_db.clear();
     std::string filename = localHostName + "client_database.txt";
     std::fstream file1(filename);
     std::string line;
@@ -231,6 +238,24 @@ public:
 		std::cout<< "failed at Slave Server Register\n";
 		abort();
 	}
+    
+    void updateDatabase(std::string update, std::string username){
+		ClientContext context;
+		DataSync primaryUpdateRequest;
+		ServerReply PrimaryUpdateReply;
+		primaryUpdateRequest.set_message(update);
+		primaryUpdateRequest.set_username(username);
+        primaryUpdateRequest.set_servername(localHostName);
+		std::cout<<"Synchronizing with other workers"<<std::endl;
+        
+		Status status = serverStub->updateDatabase(&context, primaryUpdateRequest, &PrimaryUpdateReply);
+        
+        std::cout<<"Finished"<<std::endl;
+		if(status.ok()) return;
+
+		std::cout<< "failed at Slave Server Register\n";
+		abort();
+    }
 
 private:
 	std::string serverName;
@@ -253,6 +278,56 @@ class ServerConnectImpl final:public RegisterServer::Service{
 
     return Status::OK;
   }
+  
+	Status updateDatabase(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+	std::cout<<"upating  database"<<std::endl;
+    
+    std::string update = request->message();
+    std::string username = request->username();
+    
+    std::string filename = localHostName + "client_database.txt";
+    
+    std::fstream file(filename);
+    std::string line;
+    std::ofstream outfile("in2.txt",std::ios::out|std::ios::trunc);
+    while(!file.eof())
+    {
+         if(std::getline(file,line)){
+         int space = line.find(" ");
+         std::string name = line.substr(0, space); 
+         if(name == request->username()) continue;
+           outfile << line << '\n';
+       }
+    }
+    outfile.close();
+    file.close();
+    
+    std::ofstream outfile1(filename,std::ios::out|std::ios::trunc);
+    std::fstream file1("in2.txt");
+    while(!file1.eof())
+    {
+         if(std::getline(file1,line))
+         outfile1 << line << '\n';
+    }
+    outfile1<<update<< '\n';
+    outfile1.close();
+    file1.close();
+    remove("in2.txt");//Delete temp txt
+    
+    //update to memory
+    LoadDatabase();
+    if(isMaster == true && isServerConnector==true){
+        if(request->servername() == "server1"){
+            server2PrimaryWorker->updateDatabase(update, username);
+        }
+        if(request->servername() == "server2"){
+            server1PrimaryWorker->updateDatabase(update, username);
+        }
+        
+    }
+
+    return Status::OK;
+  }
 
 
 };
@@ -262,7 +337,7 @@ class ServerConnectImpl final:public RegisterServer::Service{
 //Communication with client
 class FBChatServerImpl final : public FBChatServer::Service {
     
-    Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+  Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
         std::cout<< "Master side"<<std::endl;
         std::string primaryWorkerAddress;
         if(p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
@@ -312,6 +387,15 @@ class FBChatServerImpl final : public FBChatServer::Service {
       user1->joined.push_back(user2);
       
       UpdateDatabase(user1);
+      
+      std::string update = username1 + " joined:";
+      for(Client *c: user1->joined){
+          update += "~" + c->username;
+      }
+      
+      masterPrimaryWorker->updateDatabase(update, user1->username);
+      
+      
       reply->set_message("Join Successful");
     }
     return Status::OK; 
@@ -336,6 +420,13 @@ class FBChatServerImpl final : public FBChatServer::Service {
           if(c->username == user2->username){
                   user1->joined.erase(user1->joined.begin() + count); 
                   UpdateDatabase(user1);
+                  
+                  std::string update = username1 + " joined:";
+                  for(Client *c: user1->joined){
+                      update += "~" + c->username;
+                  }
+                  
+                  masterPrimaryWorker->updateDatabase(update, username1);
                   reply->set_message("Leave Successful");
                   return Status::OK;
           }
@@ -363,6 +454,12 @@ class FBChatServerImpl final : public FBChatServer::Service {
       }
       reply->set_message("Login Successful!");
       UpdateDatabase(&c);
+      
+      std::string update = c.username + " joined:";
+      for(Client *c: c.joined){
+          update += "~" + c->username;
+      }
+      masterPrimaryWorker->updateDatabase(update, c.username);
     }
     else{ 
       Client *user = &client_db[idx];
@@ -396,8 +493,10 @@ class FBChatServerImpl final : public FBChatServer::Service {
       int user_index = find_user(username);
       c = &client_db[user_index];
       
+      std::cout<< post.content() << std::endl;
       
-      std::string filename = username + ".txt";
+      std::string filename = localHostName + username +".txt";
+      
       google::protobuf::Timestamp tp = post.timestamp();
       std::string time = google::protobuf::util::TimeUtil::ToString(tp);
       std::string fileinput = username + " :: " + time + " :: " +post.content();
@@ -408,11 +507,11 @@ class FBChatServerImpl final : public FBChatServer::Service {
             if(c->stream == 0)
       	        c->stream = stream;
             //no record exist, create one
-            if(!CheckFile(username + ".txt")){
-                std::ofstream fout(username + ".txt",std::ios::out|std::ios::app);
+            if(!CheckFile(filename)){
+                std::ofstream fout(filename,std::ios::out|std::ios::app);
                 fout.close();
             }
-            std::ifstream history(username + ".txt");
+            std::ifstream history(filename);
             std::string line;
             int count = 0;
             Post prev;
@@ -462,7 +561,16 @@ void connectSetup(){
 	}
 
 	if(isMaster==true && isServerConnector==true){
-		std::string server_address = "0.0.0.0:"+localPort;
+        
+		std::string s1Primary = "localhost:6005";
+		std::shared_ptr<Channel> primary_channel_1 = grpc::CreateChannel(s1Primary,grpc::InsecureChannelCredentials());
+		server1PrimaryWorker = new ServerConnect(primary_channel_1, localHostName);
+        
+		std::string s2Primary = "localhost:6008";
+		std::shared_ptr<Channel> primary_channel_2 = grpc::CreateChannel(s2Primary,grpc::InsecureChannelCredentials());
+		server2PrimaryWorker = new ServerConnect(primary_channel_2, localHostName);
+        
+		std::string server_address = "localhost:"+localPort;
 		ServerConnectImpl serverConnectService;
 		ServerBuilder builder;
 		builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
@@ -472,6 +580,27 @@ void connectSetup(){
 		server->Wait();
 		
 	}
+    
+    //PrimaryWorker create channel to communicate with other PrimaryWorkers to syschronize data
+    //for process not on master server
+    if(isMaster == false && isLeader == true){
+		std::string masterPrimary = masterServerAddr + ":" + masterConnectorPort;
+		std::shared_ptr<Channel> primary_channel = grpc::CreateChannel(masterPrimary,grpc::InsecureChannelCredentials());
+		masterPrimaryWorker = new ServerConnect(primary_channel, localHostName);
+        
+		std::string server_address = "localhost:"+localPort;
+		ServerConnectImpl serverConnectService;
+        FBChatServerImpl service;
+        
+		ServerBuilder builder;
+		builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+		builder.RegisterService(&serverConnectService);
+        builder.RegisterService(&service);
+		std::unique_ptr<Server> server(builder.BuildAndStart());
+		std::cout << "Primary Worker connector is listening on "<<server_address<<std::endl;
+		server->Wait();
+    }
+    return ;
 }
 
 void RunServer(std::string port_no) {
@@ -479,12 +608,15 @@ void RunServer(std::string port_no) {
   FBChatServerImpl service;
 
   ServerBuilder builder;
+  std::cout << "t1"<< std::endl;
   // Listen on the given address without any authentication mechanism.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   // Register "service" as the instance through which we'll communicate with
   // clients. In this case it corresponds to an *synchronous* service.
+  std::cout << "t1"<< std::endl;
   builder.RegisterService(&service);
   // Finally assemble the server.
+  std::cout << "t1"<< std::endl;
   std::unique_ptr<Server> server(builder.BuildAndStart());
   std::cout << "Server listening for clients on " << server_address << std::endl;
 
@@ -517,6 +649,8 @@ int main(int argc, char** argv) {
 		slaveServerStatus[1] = 0;
 		slaveServerStatus[2] = 0;
 	}
+    
+    
 	if(!localPort.compare("6001"))	printf("6001 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
 	if(!localPort.compare("6002"))	printf("6002 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
 	if(!localPort.compare("6003"))	printf("6003 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
@@ -527,7 +661,11 @@ int main(int argc, char** argv) {
 	if(!localPort.compare("6008"))	printf("6008 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
 	if(!localPort.compare("6009"))	printf("6009 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
 	if(!localPort.compare("6010"))	printf("6010 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	connectSetup();
+    
+    /*pthread_t thread_id;
+    sleep(1);
+    pthread_create(&thread_id, NULL, connectSetup, NULL);
+    sleep(1);*/
 
   //cheack if database file is existed or not
     std::string filename = localHostName + "client_database.txt";
@@ -539,6 +677,8 @@ int main(int argc, char** argv) {
   std::cout << "Loading Database" << std::endl;
   LoadDatabase();
   std::cout << "Loading Successful" << std::endl;
+  
+  connectSetup();
   RunServer(localPort);
 
   return 0;
