@@ -45,7 +45,11 @@ service FBChatServer {
 
 service RegisterServer{
 	rpc ServerRegister(ServerReply) returns (ServerReply){}
-    rpc updateDatabase(DataSync) returns (ServerReply){}
+    rpc Join(DataSync) returns (ServerReply){}
+    rpc Login(DataSync) returns (ServerReply){}
+    rpc Leave(DataSync) returns (ServerReply){}
+    rpc updateTimeLine(DataSync) returns (ServerReply){}
+    rpc msgForward(DataSync) returns (ServerReply){}
 }
 
 message ClientRequest {
@@ -66,7 +70,8 @@ message ServerReply {
 message DataSync {
     string message = 1;
     string username = 2;
-    string servername = 3;
+    string targetname = 3;
+    string servername = 4;
 }
 
 message Post {

@@ -52,6 +52,9 @@ struct primaryWorkerInfo{
 }p_worker_info[3] = {{"localhost","6005",0},{"localhost","6008",0},{"localhost","6004",0}};
 
 std::vector<Client> client_db; // read from local file when we start server
+std::vector<std::string> connected_clients; // record the username connect to the primaryworker;
+
+
 bool isMaster = false;
 bool isLeader = false;
 std::string localPort="10000";
@@ -68,6 +71,13 @@ std::string masterConnectorPort="6004";
 int serverID = 0;
 int slaveServerStatus[3];	//0-master,1-server1,2-server2
 
+//check if given username has connected to this server
+bool checkConnected(std::string username){
+    for(std::string str : connected_clients){
+        if(username == str) return true;
+    }
+    return false;
+}
 //return the index of target client
 //if not find ,return -1 
 int find_user(std::string username){
@@ -239,21 +249,95 @@ public:
 		abort();
 	}
     
-    void updateDatabase(std::string update, std::string username){
+    void Join(std::string username1, std::string username2){
 		ClientContext context;
-		DataSync primaryUpdateRequest;
+		DataSync primaryJoinRequest;
 		ServerReply PrimaryUpdateReply;
-		primaryUpdateRequest.set_message(update);
-		primaryUpdateRequest.set_username(username);
-        primaryUpdateRequest.set_servername(localHostName);
+		primaryJoinRequest.set_username(username1);
+		primaryJoinRequest.set_targetname(username2);
+        primaryJoinRequest.set_servername(localHostName);
 		std::cout<<"Synchronizing with other workers"<<std::endl;
         
-		Status status = serverStub->updateDatabase(&context, primaryUpdateRequest, &PrimaryUpdateReply);
+		Status status = serverStub->Join(&context, primaryJoinRequest, &PrimaryUpdateReply);
         
         std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
 
-		std::cout<< "failed at Slave Server Register\n";
+		std::cout<< "failed at Synchronizing Database\n";
+		abort();
+    }
+    
+    void Login(std::string username){
+		ClientContext context;
+		DataSync primaryLoginRequest;
+		ServerReply PrimaryUpdateReply;
+		primaryLoginRequest.set_username(username);
+        primaryLoginRequest.set_servername(localHostName);
+		std::cout<<"Synchronizing with other workers"<<std::endl;
+        
+		Status status = serverStub->Login(&context, primaryLoginRequest, &PrimaryUpdateReply);
+        
+        std::cout<<"Finished"<<std::endl;
+		if(status.ok()) return;
+
+		std::cout<< "failed at Synchronizing Database\n";
+		abort();
+    }
+    
+    void Leave(std::string username1, std::string username2){
+		ClientContext context;
+		DataSync primaryLeaveRequest;
+		ServerReply PrimaryUpdateReply;
+		primaryLeaveRequest.set_username(username1);
+		primaryLeaveRequest.set_targetname(username2);
+        primaryLeaveRequest.set_servername(localHostName);
+		std::cout<<"Synchronizing with other workers"<<std::endl;
+        
+		Status status = serverStub->Leave(&context, primaryLeaveRequest, &PrimaryUpdateReply);
+        
+        std::cout<<"Finished"<<std::endl;
+		if(status.ok()) return;
+
+		std::cout<< "failed at Synchronizing Database\n";
+		abort();
+    }
+    void updateTimeLine(std::string post, std::string username){
+		ClientContext context;
+		DataSync primaryUpdateRequest;
+		ServerReply PrimaryUpdateReply;
+		primaryUpdateRequest.set_message(post);
+		primaryUpdateRequest.set_username(username);
+        primaryUpdateRequest.set_servername(localHostName);
+        
+		std::cout<<"Synchronizing with other workers"<<std::endl;
+        
+		Status status = serverStub->updateTimeLine(&context, primaryUpdateRequest, &PrimaryUpdateReply);
+        
+        std::cout<<"Finished"<<std::endl;
+		if(status.ok()) return;
+
+		std::cout<< "failed at Synchronizing Timeline\n";
+		abort();
+    }
+    
+    void msgForward(std::string msg, std::string username, std::string targetname){
+		ClientContext context;
+		DataSync primaryMsgRequest;
+		ServerReply PrimaryUpdateReply;
+        
+		primaryMsgRequest.set_message(msg);
+		primaryMsgRequest.set_username(username);
+        primaryMsgRequest.set_targetname(targetname);
+        primaryMsgRequest.set_servername(localHostName);
+        
+		std::cout<<"msg"<<std::endl;
+        
+		Status status = serverStub->msgForward(&context, primaryMsgRequest, &PrimaryUpdateReply);
+        
+        std::cout<<"Finished"<<std::endl;
+		if(status.ok()) return;
+
+		std::cout<< "failed at Synchronizing Timeline\n";
 		abort();
     }
 
@@ -279,56 +363,175 @@ class ServerConnectImpl final:public RegisterServer::Service{
     return Status::OK;
   }
   
-	Status updateDatabase(ServerContext* context, const DataSync* request, ServerReply* reply) override {
-	std::cout<<"upating  database"<<std::endl;
-    
-    std::string update = request->message();
-    std::string username = request->username();
-    
-    std::string filename = localHostName + "client_database.txt";
-    
-    std::fstream file(filename);
-    std::string line;
-    std::ofstream outfile("in2.txt",std::ios::out|std::ios::trunc);
-    while(!file.eof())
-    {
-         if(std::getline(file,line)){
-         int space = line.find(" ");
-         std::string name = line.substr(0, space); 
-         if(name == request->username()) continue;
-           outfile << line << '\n';
-       }
-    }
-    outfile.close();
-    file.close();
-    
-    std::ofstream outfile1(filename,std::ios::out|std::ios::trunc);
-    std::fstream file1("in2.txt");
-    while(!file1.eof())
-    {
-         if(std::getline(file1,line))
-         outfile1 << line << '\n';
-    }
-    outfile1<<update<< '\n';
-    outfile1.close();
-    file1.close();
-    remove("in2.txt");//Delete temp txt
-    
-    //update to memory
-    LoadDatabase();
-    if(isMaster == true && isServerConnector==true){
-        if(request->servername() == "server1"){
-            server2PrimaryWorker->updateDatabase(update, username);
-        }
-        if(request->servername() == "server2"){
-            server1PrimaryWorker->updateDatabase(update, username);
+    Status msgForward(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+        std::string msg = request->message();
+        std::string username = request->username();
+        std::string targetname = request->targetname();
+        
+        Post post;
+        post.set_username(username);
+        post.set_content(msg);
+        
+        for(Client temp_client: client_db){
+            if(temp_client.username == targetname && checkConnected(targetname) && temp_client.stream!=0 && temp_client.connect_status)
+                temp_client.stream->Write(post);
         }
         
+        if(isMaster == true && isServerConnector==true){
+            if(request->servername() == "server1"){
+                server2PrimaryWorker->msgForward(msg,username,targetname);
+            }
+            if(request->servername() == "server2"){
+                server1PrimaryWorker->msgForward(msg, username,targetname);
+            }
+        
+        }
+        
+        return Status::OK;
     }
 
-    return Status::OK;
+    Status updateTimeLine(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+      
+      std::string msg = request->message();
+      std::string username = request->username();
+      
+      std::string filename = localHostName + username + ".txt";
+    
+      std::fstream file(filename);
+      std::string line;
+      std::ofstream outfile("in2.txt",std::ios::out|std::ios::trunc);
+      outfile << msg << '\n';
+      while(!file.eof())
+      {
+           if(std::getline(file,line)){
+             outfile << line << '\n';
+         }
+      }
+      outfile.close();
+      file.close();
+      //std::string temp = username + ".txt";
+      //const char *k = temp.c_str();
+      const char *k = filename.c_str();
+      rename(k, "del.txt");
+      rename("in2.txt", k);
+      remove("del.txt");//Delete temp txt
+      
+      if(isMaster == true && isServerConnector==true){
+          if(request->servername() == "server1"){
+              server2PrimaryWorker->updateTimeLine(msg, username);
+          }
+          if(request->servername() == "server2"){
+              server1PrimaryWorker->updateTimeLine(msg, username);
+          }
+        
+      }
+      
+      return Status::OK;
   }
-
+  Status Join(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+      std::string username1 = request->username();
+      std::string username2 = request->targetname();
+      int join = find_user(username2);
+      //If you try to join a non-existent client or yourself, send failure message
+      if(join == -1|| username1 == username2)
+        reply->set_message("Join Failed -- Username Not Exist or Own Username");
+      else{
+          Client *user2 = &client_db[join];
+          Client *user1 = &client_db[find_user(username1)];
+        //If user1 already join user2, send failure message
+          for(Client* c: user2->joined){
+              if(c->username == user1->username){
+                      reply->set_message("Join Failed -- Alredy Joined This User");
+                      return Status::OK;
+              }
+          }
+        user2->joined.push_back(user1);
+      
+        UpdateDatabase(user2);
+      
+        if(isMaster == true && isServerConnector==true){
+            if(request->servername() == "server1"){
+                server2PrimaryWorker->Join(username1, username2);
+            }
+            if(request->servername() == "server2"){
+                server1PrimaryWorker->Join(username1, username2);
+            }
+        
+        }
+      
+        reply->set_message("Join Successful");
+      }
+      return Status::OK; 
+  }
+  
+  Status Login(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+    Client c;
+    std::string username = request->username();
+    std::string filename = localHostName + username + ".txt";
+    int idx = find_user(username);
+    if(idx == -1){  // first timelogin
+      c.username = username;
+      c.connect_status = true;
+      client_db.push_back(c);
+      if(!CheckFile(filename)){
+          std::ofstream fout(filename,std::ios::out);
+          fout.close();
+      }
+      
+      UpdateDatabase(&c);
+     
+      if(isMaster == true && isServerConnector==true){
+          if(request->servername() == "server1"){
+              server2PrimaryWorker->Login(username);
+          }
+          if(request->servername() == "server2"){
+              server1PrimaryWorker->Login(username);
+          }
+      
+      } 
+    }
+    return Status::OK;
+}
+  
+Status Leave(ServerContext* context, const DataSync* request, ServerReply* reply) override {
+  std::string username1 = request->username();
+  std::string username2 = request->targetname();
+  int leave = find_user(username2);
+  //If you try to leave a non-existent, send failure message
+  //Also, you can not leave yourself
+  if(leave == -1 || username1 == username2)
+    reply->set_message("Leave Failed -- Username Not Exist or Own Username");
+  else{
+    Client *user1 = &client_db[find_user(username1)];
+    Client *user2 = &client_db[leave];
+    int count = 0;
+    
+    //If user1 hasn't joined user2, send failure message
+    for(Client* c: user2->joined){
+        if(c->username == user1->username){
+                user2->joined.erase(user2->joined.begin() + count); 
+                
+                UpdateDatabase(user2);
+                
+                if(isMaster == true && isServerConnector==true){
+                    if(request->servername() == "server1"){
+                        server2PrimaryWorker->Leave(username1, username2);
+                    }
+                    if(request->servername() == "server2"){
+                        server1PrimaryWorker->Leave(username1, username2);
+                    }
+      
+                }
+                
+                reply->set_message("Leave Successful");
+                return Status::OK;
+        }
+        count++;
+    }
+  }
+  reply->set_message("Leave Failed -- Not Joined Yet");
+  return Status::OK;
+}
 
 };
 
@@ -358,10 +561,16 @@ class FBChatServerImpl final : public FBChatServer::Service {
     Client user = client_db[find_user(request->username())];
     for(Client c : client_db){
       showlist->add_all_clients(c.username);
+      if(c.username == user.username) continue;
+      for(Client *i: c.joined){
+          if(i->username == user.username){
+              showlist->add_joined_clients(c.username);
+          }
+      }
     }
-    for(Client* c: user.joined){
+    /*for(Client* c: user.joined){
         showlist->add_joined_clients(c->username);
-    }
+    }*/
     return Status::OK;
   }
 
@@ -378,22 +587,17 @@ class FBChatServerImpl final : public FBChatServer::Service {
         Client *user2 = &client_db[join];
         Client *user1 = &client_db[find_user(username1)];
       //If user1 already join user2, send failure message
-        for(Client* c: user1->joined){
-            if(c->username == user2->username){
+        for(Client* c: user2->joined){
+            if(c->username == user1->username){
                     reply->set_message("Join Failed -- Alredy Joined This User");
                     return Status::OK;
             }
         }
-      user1->joined.push_back(user2);
+      user2->joined.push_back(user1);
       
-      UpdateDatabase(user1);
+      UpdateDatabase(user2);
       
-      std::string update = username1 + " joined:";
-      for(Client *c: user1->joined){
-          update += "~" + c->username;
-      }
-      
-      masterPrimaryWorker->updateDatabase(update, user1->username);
+      masterPrimaryWorker->Join(username1, username2);
       
       
       reply->set_message("Join Successful");
@@ -416,17 +620,13 @@ class FBChatServerImpl final : public FBChatServer::Service {
       Client *user2 = &client_db[leave];
       int count = 0;
       //If user1 hasn't joined user2, send failure message
-      for(Client* c: user1->joined){
-          if(c->username == user2->username){
-                  user1->joined.erase(user1->joined.begin() + count); 
-                  UpdateDatabase(user1);
+      for(Client* c: user2->joined){
+          if(c->username == user1->username){
+                  user2->joined.erase(user2->joined.begin() + count); 
+                  UpdateDatabase(user2);
                   
-                  std::string update = username1 + " joined:";
-                  for(Client *c: user1->joined){
-                      update += "~" + c->username;
-                  }
+                  masterPrimaryWorker->Leave(username1, username2);
                   
-                  masterPrimaryWorker->updateDatabase(update, username1);
                   reply->set_message("Leave Successful");
                   return Status::OK;
           }
@@ -453,13 +653,12 @@ class FBChatServerImpl final : public FBChatServer::Service {
           fout.close();
       }
       reply->set_message("Login Successful!");
-      UpdateDatabase(&c);
       
-      std::string update = c.username + " joined:";
-      for(Client *c: c.joined){
-          update += "~" + c->username;
-      }
-      masterPrimaryWorker->updateDatabase(update, c.username);
+      connected_clients.push_back(username);
+      
+      UpdateDatabase(&c);
+     
+      masterPrimaryWorker->Login(username);
     }
     else{ 
       Client *user = &client_db[idx];
@@ -473,6 +672,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
           }
         std::string msg = "Welcome Back " + user->username;
         reply->set_message(msg);
+        connected_clients.push_back(user->username);
         user->connect_status = true;
       }
     }
@@ -529,20 +729,29 @@ class FBChatServerImpl final : public FBChatServer::Service {
       else{  
         //put the meassge to the sender's timeline history
           ModifyTimeLine(fileinput,username);
-          
+          masterPrimaryWorker->updateTimeLine(fileinput, username);
       //Send messages to all clients this client has been joined by using ServerReaderWriter
         for(Client* temp_client: c->joined){
-            if(temp_client->stream!=0 && temp_client->connect_status)
-                temp_client->stream->Write(post); 
-
+            if(checkConnected(temp_client->username) && temp_client->stream!=0 && temp_client->connect_status)
+                temp_client->stream->Write(post);
             //write to client's timeline history
             std::string temp_username = temp_client->username;
             ModifyTimeLine(fileinput,temp_username);
+            
+            masterPrimaryWorker->updateTimeLine(fileinput, temp_username);
+            masterPrimaryWorker->msgForward(post.content(), post.username(),temp_username);
             
             }
         }
     }
     //If the client disconnected from Chat Mode, set connected to false
+    int count = 0;
+    for(std::string str : connected_clients){
+        if(str == c->username){
+                connected_clients.erase(connected_clients.begin() + count);
+            }
+        count++;
+    }
     c->connect_status = false;
     c->stream = 0;
     return Status::OK;
@@ -594,8 +803,8 @@ void connectSetup(){
         
 		ServerBuilder builder;
 		builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-		builder.RegisterService(&serverConnectService);
         builder.RegisterService(&service);
+		builder.RegisterService(&serverConnectService);
 		std::unique_ptr<Server> server(builder.BuildAndStart());
 		std::cout << "Primary Worker connector is listening on "<<server_address<<std::endl;
 		server->Wait();
