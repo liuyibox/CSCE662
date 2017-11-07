@@ -58,6 +58,9 @@ std::string localHostName="localhost";
 std::string masterServerAddr="localhost";
 std::string masterConnectorPort="6004";
 
+
+std::string prevP1 = "";
+std::string prevP2 = "";
 //string ServerHostAddr[3];
 int serverID = 0;
 int slaveServerStatus[3];	//0-master,1-server1,2-server2, this indicates if server is on
@@ -725,7 +728,6 @@ class ServerConnectImpl final:public RegisterServer::Service{
     int idx = find_user(username);
     if(idx == -1){  // first timelogin
       c.username = username;
-      c.connect_status = true;
       client_db.push_back(c);
       if(!CheckFile(filename)){
           std::ofstream fout(filename,std::ios::out);
@@ -817,18 +819,30 @@ class FBChatServerImpl final : public FBChatServer::Service {
     Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
           std::cout<< "Master side"<<std::endl;
           std::string primaryWorkerAddress;
+          
           p_worker_info[0].hostname = getLeader1();
           p_worker_info[1].hostname = getLeader2();
           
-          if(p_worker_info[1].hostname == "" || p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
+          if(prevP1 != "" && prevP1 != p_worker_info[0].hostname){
+              p_worker_info[0].connected_clients = 0;
+          }
+          else if(prevP2 != "" && prevP2 != p_worker_info[1].hostname){
+              p_worker_info[1].connected_clients = 0;
+          }
+          
+          
+          if(p_worker_info[1].hostname == " " || p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
               primaryWorkerAddress = p_worker_info[0].hostname;
               p_worker_info[0].connected_clients++;
             
           }
-          else if(p_worker_info[0].hostname == "" || p_worker_info[1].connected_clients <= p_worker_info[0].connected_clients){
+          else if(p_worker_info[0].hostname == " " || p_worker_info[1].connected_clients <= p_worker_info[0].connected_clients){
               primaryWorkerAddress = p_worker_info[1].hostname;
               p_worker_info[1].connected_clients++;
           }
+          
+          prevP1 =  p_worker_info[0].hostname;
+          prevP2 =  p_worker_info[1].hostname;
         reply->set_message(primaryWorkerAddress);
         return Status::OK;
       }
@@ -1160,7 +1174,7 @@ void* ListenHeartBeat(void* invalid){
 	builder.AddListeningPort(server_address,grpc::InsecureServerCredentials());
     
     //Primary worker or Master should connect with client
-    if((!isMaster && isLeader) || (isMaster && isLeader)) builder.RegisterService(&service);
+    if((!isMaster) || (isMaster && isLeader)) builder.RegisterService(&service);
 	builder.RegisterService(&serverConnectService);
 	std::unique_ptr<Server> server(builder.BuildAndStart());
 	std::cout << "port: " << localPort << " is listening" <<std::endl;
