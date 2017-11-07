@@ -201,7 +201,7 @@ void Alive(){
 	ServerReply reply;
 	ClientRequest request;  
 
-	Status status = clientStub->Login(&context, request, &reply);
+	Status status = clientStub->Alive(&context, request, &reply);
 	if(status.ok()) return;
     
 	//if not alive
@@ -352,7 +352,7 @@ int main(int argc, char** argv) {
 		if(alive && s == "NO THIS COMMAND") cout << "NO THIS COMMAND" << endl;
 	}
 	//enter chat mode out of the while loop above
-	if(alive) connect_to_server->Chat(username);
+	 if(alive) connect_to_server->Chat(username);
     }
 	return 0;
 }

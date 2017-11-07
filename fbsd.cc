@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <thread>
 #include <memory>
 #include <string>
 #include <stdlib.h>
@@ -45,31 +46,32 @@ struct Client{
   ServerReaderWriter<Post, Post>* stream = 0;
 };
 
-struct primaryWorkerInfo{
-    std::string hostname;
-    std::string port;
-    int connected_clients;
-}p_worker_info[3] = {{"localhost","6005",0},{"localhost","6008",0},{"localhost","6004",0}};
 
 std::vector<Client> client_db; // read from local file when we start server
-std::vector<std::string> connected_clients; // record the username connect to the primaryworker;
-
+std::vector<std::string> connected_clients; // record the username of clients that connect to the server
 
 bool isMaster = false;
 bool isLeader = false;
 std::string localPort="10000";
 bool isServerConnector=false;
 std::string localHostName="localhost";
-
-ServerConnect* masterPrimaryWorker;
-ServerConnect* server1PrimaryWorker;
-ServerConnect* server2PrimaryWorker;
-
 std::string masterServerAddr="localhost";
 std::string masterConnectorPort="6004";
+
 //string ServerHostAddr[3];
 int serverID = 0;
-int slaveServerStatus[3];	//0-master,1-server1,2-server2
+int slaveServerStatus[3];	//0-master,1-server1,2-server2, this indicates if server is on
+//int serverMonitored[3];		//0-master,1-server1,2-server2, this indicates if processes on each is monitored
+std::vector<std::vector<std::string>> heartBeatCandidate;
+std::vector<ServerConnect*> dataConnectVect;
+
+ServerConnect* masterPrimaryWorker;
+
+struct primaryWorkerInfo{
+    std::string hostname;
+    int connected_clients;
+}p_worker_info[2] = {{"",0},{"",0}};
+    
 
 //check if given username has connected to this server
 bool checkConnected(std::string username){
@@ -78,6 +80,7 @@ bool checkConnected(std::string username){
     }
     return false;
 }
+
 //return the index of target client
 //if not find ,return -1 
 int find_user(std::string username){
@@ -89,6 +92,58 @@ int find_user(std::string username){
     return -1;
 }
 
+int find_server_ID(std::string addr){
+	
+	if(addr.compare("0.0.0.0:6004") <= 0) return 0;
+	if(addr.compare("0.0.0.0:6007") <= 0) return 1;
+	return 2;
+
+}
+
+bool isLeaderDown(std::string addr){
+    int down_id = find_server_ID(addr);
+    if(addr.compare((heartBeatCandidate[down_id])[0]) == 0)
+        return true;
+    else
+        return false;
+}
+
+void writeLeader1(std::string str){
+	std::ofstream newfile("leader1.txt");
+	newfile << str;
+	newfile.close();
+}
+
+void writeLeader2(std::string str){
+	std::ofstream newfile("leader2.txt");
+	newfile << str;
+	newfile.close();
+}
+
+std::string getLeader1(){
+	std::string rv;
+	std::fstream readfile("leader1.txt");
+//	while(readfile.eof == false){
+	std::getline(readfile, rv);
+//	}
+	readfile.close();
+	return rv;
+}
+
+std::string getLeader2(){
+	std::string rv;
+	std::fstream readfile("leader2.txt");
+//	while(readfile.eof == false){
+	std::getline(readfile, rv);
+//	}
+	readfile.close();
+	return rv;
+}
+
+std::string find_port(std::string addr){
+	std::size_t pos = addr.find("60");
+	return addr.substr(pos);
+}
 //Each time when client "JOIN", "LEAVE" or log in, we should synchronize
 //our client database
 void UpdateDatabase(Client *client){
@@ -226,13 +281,110 @@ void ModifyTimeLine(std::string msg, std::string username){
     remove("del.txt");//Delete temp txt
     return;
 }
+
+void* startSlaveServer(void* desServerId){
+	int dest_server_id = *((int*)desServerId);
+	std::string cmd;
+	if(dest_server_id == 1){
+		cmd = "bash server.sh server1";
+	}else{
+		cmd = "bash server.sh server2";	
+	}
+	
+	if(std::system(cmd.c_str()) == -1) std::cout<< "failed when execute <" + cmd + ">" << std::endl;
+}
+
+
+void* startSlaveProc(void* destAddr){
+	std::string dest_addr = *(static_cast<std::string*>(destAddr));
+	std::string dest_port = find_port(dest_addr);
+	std::string cmd = "./fbsd";
+	if(dest_port.compare("6004") == 0 ||dest_port.compare("6007") == 0 ||dest_port.compare("6010") == 0){
+		cmd += " -c 1";
+	}
+	cmd += " -p " + dest_port + " -h " + localHostName;
+	if(localHostName.compare("masterServer") == 0) {
+		cmd += " -m 1";
+	}
+	cmd += " -i " + std::to_string(serverID);
+	printf("%s\n",cmd.c_str());
+//	printf("\n");
+	
+	if(std::system(cmd.c_str()) == -1) std::cout<< "failed when execute <" + cmd + ">" << std::endl;
+}
+
+
  
 //Class used for slave server to connect to master server
 class ServerConnect{
 public:
-	ServerConnect(std::shared_ptr<Channel> channel, std::string server_Name){
+	ServerConnect(std::shared_ptr<Channel> channel, std::string server_Name, std::string local_Port_Name){
 		serverStub = RegisterServer::NewStub(channel);
 		serverName = server_Name;
+		localPortName = local_Port_Name;
+	}
+	std::string ProcHeartBeat(std::string destAddr){
+		ClientContext context;
+		ServerReply heartBeatRequest;
+		ServerReply heartBeatReply;
+	//	if(isMaster == true && isLeader == true){
+			heartBeatRequest.set_leader(0);
+	//	}
+		heartBeatRequest.set_message("?");
+		heartBeatRequest.set_portnum(localPort);
+
+		Status status = serverStub->ProcHeartBeat(&context, heartBeatRequest, &heartBeatReply);
+		int dest_server_id = find_server_ID(destAddr);
+		if(status.ok()) {
+
+			if(isMaster == true && isServerConnector == true){
+				if(heartBeatReply.leader() == 1){
+                    std::cout << "leader on server " << dest_server_id << " is " + destAddr << std::endl;
+					if(!destAddr.compare((heartBeatCandidate[dest_server_id])[0])){
+						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
+						newfile << destAddr;
+						newfile.close();			
+					}
+				}
+			}
+
+			slaveServerStatus[dest_server_id] = 1;
+			return heartBeatReply.message();
+		}
+		else{
+			std::cout << localPort + " detected a dead process at " + destAddr  << std::endl;
+			//we detect a dead process, first we check if the server is down
+			if(isMaster == true && isServerConnector == true){
+				slaveServerStatus[dest_server_id] = 0;
+				sleep(1);
+				
+				if(slaveServerStatus[dest_server_id] == 0){
+						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
+						newfile << " ";
+						newfile.close();
+				/*	std::cout << localPort + " detected server " << dest_server_id << " is down" << std::endl;
+					pthread_t startSlaveServer_id;
+					pthread_create(&startSlaveServer_id, NULL, startSlaveServer, (void*) &dest_server_id);
+					sleep(1);
+				//	startSlaveServer(dest_server_id);
+				*/
+				}
+			}
+
+			if(dest_server_id == serverID && isLeader == true){
+				pthread_t startSlaveProc_id;
+				pthread_create(&startSlaveProc_id, NULL, startSlaveProc, static_cast<void*>(&destAddr));
+				sleep(1);
+			}else if(dest_server_id == serverID && isLeader == false && isLeaderDown(destAddr) == true){
+			//	pthread_t startPrimaryProc_id;
+			//	std::cout << localPort << " is taking part of starting Primary process" << std::endl;
+			//	pthread_create(&startPrimaryProc_id, NULL, startPrimaryProc, static_cast<void*>(&destAddr));
+			//	sleep(1);
+				startPrimaryProc(destAddr);
+		//	}else if(dest_server_id == serverID && isMaster == false){
+		//		startPrimaryProc(destAddr);
+			}
+		}
 	}
 
 	std::string ServerRegister(){
@@ -243,10 +395,58 @@ public:
 		slaveServerRequest.set_id(serverID);
 		std::cout<<"Hello World! from slave server"<<std::endl;
 		Status status = serverStub->ServerRegister(&context, slaveServerRequest, &masterServerReply);
-		if(status.ok()) return masterServerReply.message();
-
+		if(status.ok()) {
+			return masterServerReply.message();	
+		}
 		std::cout<< "failed at Slave Server Register\n";
 		abort();
+	}
+
+	std::string Election(){
+		ClientContext context;
+		ServerReply requestElection;
+		ServerReply replyElection;
+		requestElection.set_message(localPort);
+		requestElection.set_id(serverID);
+		Status status = serverStub->Election(&context, requestElection, &replyElection);
+		if(status.ok()){
+			return 	replyElection.message();
+		}
+		std::cout<< "failed at election from "<< localPort << std::endl;
+		abort();
+	}
+
+	static void startPrimaryProc(std::string destAddr){
+	//	std::string dest_addr = *(static_cast<std::string*>(destAddr));	
+		
+		std::string dest_addr = destAddr;
+		if(!isServerConnector){
+			//once on the same machine, we do election
+			isLeader = true;
+			if(find_server_ID(dest_addr) == serverID){
+				for(int i = 1; i < (heartBeatCandidate[serverID]).size(); i++){
+					std::string election_connection = (heartBeatCandidate[serverID])[i];
+					if(!(election_connection.compare("0.0.0.0:"+localPort))) continue;
+					std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
+					ServerConnect *server_connect = new ServerConnect(election_channel, localHostName, election_connection);
+					std::string electionReply = server_connect->Election();
+				//	std::cout << localPort << "get the voted message:" << electionReply << std::endl;
+					if((electionReply).compare(localPort) > 0){ 
+						//isLeader = true;
+						//std::cout << ", result is " << isLeader << std::endl;
+					}else{
+						isLeader = false;
+					}
+				}
+			}
+			//sleep(5);
+			if(isLeader == true){
+				std::cout << localPort << "is leader and is recreating a slave process to run " << dest_addr << std::endl;
+				pthread_t startSlaveProc_id;
+				pthread_create(&startSlaveProc_id, NULL, startSlaveProc, static_cast<void*>(&destAddr));
+				sleep(1);
+			}
+		}
 	}
     
     void Join(std::string username1, std::string username2){
@@ -339,29 +539,54 @@ public:
 		std::cout<< "failed at Synchronizing Timeline\n";
 		abort();
     }
-
+    std::string getName(){
+        return localPortName;
+    }
 private:
 	std::string serverName;
+	std::string localPortName;
 	std::unique_ptr<RegisterServer::Stub> serverStub;
 };
 
 class ServerConnectImpl final:public RegisterServer::Service{
-
+	Status ProcHeartBeat(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
+		if(!(request->message().compare("?"))){
+		//	string temp_msg = 
+			if(isLeader == true){
+				reply->set_leader(1);
+			}
+			reply->set_message(request->portnum()+"-->"+localPort);
+			reply->set_id(serverID);
+			reply->set_portnum(localPort);
+		}
+		return Status::OK;
+	}
 	Status ServerRegister(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
-
-	std::cout<<"Hello World! from master server"<<std::endl;
-	int request_server_id = (int)(request->id());
-	slaveServerStatus[request_server_id] = 1;
-//	std::string requestServerName = ;
-//	std::cout<<"Hello World! from master server\n"<<std::endl;
-	std::string register_reply = request->message()+" Register Successful!";
-	
-      reply->set_message(register_reply);
-	reply->set_id(0);
-
-    return Status::OK;
-  }
-  
+		std::cout<<"Hello World! from master server"<<std::endl;
+		int request_server_id = (int)(request->id());
+		if (slaveServerStatus[request_server_id] == 0){
+			slaveServerStatus[request_server_id] = 1;
+			std::string register_reply = request->message()+" Register Successful!";
+			reply->set_message(register_reply);
+			reply->set_id(0);
+		}else{
+			std::string register_reply = "Welcome back, "+ request->message();
+			reply->set_message(register_reply);
+			reply->set_id(0);
+		}
+		return Status::OK;
+  	}
+	Status Election(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
+//		std::cout << localPort+"get election request from " + request->message() <<std::endl;
+		if(((int)(request->id())) == serverID){
+			//if(localPort.compare(request->message()) < 0)	reply->set_message(localPort);
+			reply->set_message(localPort);
+		}else{
+			std::cout << "!!!request server is " << (int)(request->id()) <<", my server is serverID!!!" << std::endl;
+		}
+//		std::cout << localPort+"have voted " <<std::endl;
+		return Status::OK;
+	}
     Status msgForward(ServerContext* context, const DataSync* request, ServerReply* reply) override {
         std::string msg = request->message();
         std::string username = request->username();
@@ -378,10 +603,20 @@ class ServerConnectImpl final:public RegisterServer::Service{
         
         if(isMaster == true && isServerConnector==true){
             if(request->servername() == "server1"){
-                server2PrimaryWorker->msgForward(msg,username,targetname);
+                std::string address = getLeader2();
+                for(ServerConnect* s : dataConnectVect){
+                    if(s->getName() == address){
+                        s->msgForward(msg,username,targetname);
+                    }
+                }
             }
             if(request->servername() == "server2"){
-                server1PrimaryWorker->msgForward(msg, username,targetname);
+                std::string address = getLeader1();
+                for(ServerConnect* s : dataConnectVect){
+                    if(s->getName() == address){
+                        s->msgForward(msg,username,targetname);
+                    }
+                }
             }
         
         }
@@ -417,10 +652,20 @@ class ServerConnectImpl final:public RegisterServer::Service{
       
       if(isMaster == true && isServerConnector==true){
           if(request->servername() == "server1"){
-              server2PrimaryWorker->updateTimeLine(msg, username);
+              std::string address = getLeader2();
+              for(ServerConnect* s : dataConnectVect){
+                  if(s->getName() == address){
+                      s->updateTimeLine(msg, username);
+              }
+             }
           }
           if(request->servername() == "server2"){
-              server1PrimaryWorker->updateTimeLine(msg, username);
+              std::string address = getLeader1();
+              for(ServerConnect* s : dataConnectVect){
+                  if(s->getName() == address){
+                      s->updateTimeLine(msg, username);
+              }
+             }
           }
         
       }
@@ -450,10 +695,20 @@ class ServerConnectImpl final:public RegisterServer::Service{
       
         if(isMaster == true && isServerConnector==true){
             if(request->servername() == "server1"){
-                server2PrimaryWorker->Join(username1, username2);
+                std::string address = getLeader2();
+                for(ServerConnect* s : dataConnectVect){
+                    if(s->getName() == address){
+                        s->Join(username1, username2);
+                    }
+                }
             }
             if(request->servername() == "server2"){
-                server1PrimaryWorker->Join(username1, username2);
+                std::string address = getLeader1();
+                for(ServerConnect* s : dataConnectVect){
+                    if(s->getName() == address){
+                            s->Join(username1, username2);
+                    }
+                }
             }
         
         }
@@ -481,10 +736,20 @@ class ServerConnectImpl final:public RegisterServer::Service{
      
       if(isMaster == true && isServerConnector==true){
           if(request->servername() == "server1"){
-              server2PrimaryWorker->Login(username);
+              std::string address = getLeader2();
+              for(ServerConnect* s : dataConnectVect){
+                  if(s->getName() == address){
+              s->Login(username);
+          }
+      }
           }
           if(request->servername() == "server2"){
-              server1PrimaryWorker->Login(username);
+              std::string address = getLeader1();
+              for(ServerConnect* s : dataConnectVect){
+                  if(s->getName() == address){
+              s->Login(username);
+          }
+      }
           }
       
       } 
@@ -514,10 +779,20 @@ Status Leave(ServerContext* context, const DataSync* request, ServerReply* reply
                 
                 if(isMaster == true && isServerConnector==true){
                     if(request->servername() == "server1"){
-                        server2PrimaryWorker->Leave(username1, username2);
+                        std::string address = getLeader2();
+                        for(ServerConnect* s : dataConnectVect){
+                            if(s->getName() == address){
+                        s->Leave(username1, username2);
+                    }
+                }
                     }
                     if(request->servername() == "server2"){
-                        server1PrimaryWorker->Leave(username1, username2);
+                        std::string address = getLeader1();
+                        for(ServerConnect* s : dataConnectVect){
+                            if(s->getName() == address){
+                        s->Leave(username1, username2);
+                    }
+                }
                     }
       
                 }
@@ -531,7 +806,7 @@ Status Leave(ServerContext* context, const DataSync* request, ServerReply* reply
   reply->set_message("Leave Failed -- Not Joined Yet");
   return Status::OK;
 }
-
+    
 };
 
 
@@ -539,39 +814,39 @@ Status Leave(ServerContext* context, const DataSync* request, ServerReply* reply
 //Communication with client
 class FBChatServerImpl final : public FBChatServer::Service {
     
-  Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
-        std::cout<< "Master side"<<std::endl;
-        std::string primaryWorkerAddress;
-        if(p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
-            primaryWorkerAddress = p_worker_info[0].hostname + ":" + p_worker_info[0].port;
-            p_worker_info[0].connected_clients++;
+    Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+          std::cout<< "Master side"<<std::endl;
+          std::string primaryWorkerAddress;
+          p_worker_info[0].hostname = getLeader1();
+          p_worker_info[1].hostname = getLeader2();
+          
+          if(p_worker_info[1].hostname == "" || p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
+              primaryWorkerAddress = p_worker_info[0].hostname;
+              p_worker_info[0].connected_clients++;
             
-        }
-        else{
-            primaryWorkerAddress = p_worker_info[1].hostname + ":" + p_worker_info[1].port;
-            p_worker_info[1].connected_clients++;
-        }
-      reply->set_message(primaryWorkerAddress);
-      return Status::OK;
-    }
+          }
+          else if(p_worker_info[0].hostname == "" || p_worker_info[1].connected_clients <= p_worker_info[0].connected_clients){
+              primaryWorkerAddress = p_worker_info[1].hostname;
+              p_worker_info[1].connected_clients++;
+          }
+        reply->set_message(primaryWorkerAddress);
+        return Status::OK;
+      }
     
   //Sends the list of total rooms and joined rooms to the client
-  Status List(ServerContext* context, const ClientRequest* request, ShowList* showlist) override {
-    Client user = client_db[find_user(request->username())];
-    for(Client c : client_db){
-      showlist->add_all_clients(c.username);
-      if(c.username == user.username) continue;
-      for(Client *i: c.joined){
-          if(i->username == user.username){
-              showlist->add_joined_clients(c.username);
+     Status List(ServerContext* context, const ClientRequest* request, ShowList* showlist) override {
+        Client user = client_db[find_user(request->username())];
+        for(Client c : client_db){
+          showlist->add_all_clients(c.username);
+          if(c.username == user.username) continue;
+          for(Client *i: c.joined){
+              if(i->username == user.username){
+                  showlist->add_joined_clients(c.username);
+              }
           }
+        }
+        return Status::OK;
       }
-    }
-    /*for(Client* c: user.joined){
-        showlist->add_joined_clients(c->username);
-    }*/
-    return Status::OK;
-  }
 
   //Set user1 join user2 so that user2 can see what user1 had posted
   //modify database
@@ -639,6 +914,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
   //Called when the client startd and checks whether their username is taken or not
   Status Login(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
       std::cout<< "Primary Worker side"<<std::endl;
+      std::cout<< "Log in"<<std::endl;
     Client c;
     std::string username = request->username();
     std::string filename = localHostName + username +".txt";
@@ -677,17 +953,17 @@ class FBChatServerImpl final : public FBChatServer::Service {
     }
     return Status::OK;
   }
+
+  Status Alive(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+      return Status::OK;
+  }
   
-   Status Alive(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
-       return Status::OK;
-   }
-   
-   Status Check(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
-       if(isMaster && isLeader){
-           reply->set_message("isMaster");
-       }
-       return Status::OK;
-   }
+  Status Check(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+      if(isMaster && isLeader){
+          reply->set_message("isMaster");
+      }
+      return Status::OK;
+  }
   //let client makes post and forwards it to all the clients it has joined
   //use ServerReaderWriter to communicate with client
   Status Chat(ServerContext* context, 
@@ -766,62 +1042,134 @@ class FBChatServerImpl final : public FBChatServer::Service {
   }
 };
 
-void connectSetup(){
-    
 
+void connectSetup(){
+
+	//process at 6007 & 6010 are responsible to register two slave servers
+//	if(isMaster==false){	
+		
 	if(isMaster==false && isServerConnector==true){
 		std::string server_register_connection = masterServerAddr+":"+masterConnectorPort;
 		std::shared_ptr<Channel> server_register_channel = grpc::CreateChannel(server_register_connection,grpc::InsecureChannelCredentials());
-		ServerConnect *server_connect = new ServerConnect(server_register_channel, localHostName);
+		ServerConnect *server_connect = new ServerConnect(server_register_channel, localHostName, server_register_connection);
 		std::string serverRegisterReply = server_connect->ServerRegister();
 		std::cout << serverRegisterReply << std::endl;
 	}
-
-	if(isMaster==true && isServerConnector==true){
-        
-		std::string s1Primary = "localhost:6005";
-		std::shared_ptr<Channel> primary_channel_1 = grpc::CreateChannel(s1Primary,grpc::InsecureChannelCredentials());
-		server1PrimaryWorker = new ServerConnect(primary_channel_1, localHostName);
-        
-		std::string s2Primary = "localhost:6008";
-		std::shared_ptr<Channel> primary_channel_2 = grpc::CreateChannel(s2Primary,grpc::InsecureChannelCredentials());
-		server2PrimaryWorker = new ServerConnect(primary_channel_2, localHostName);
-        
-		std::string server_address = "localhost:"+localPort;
-		ServerConnectImpl serverConnectService;
-		ServerBuilder builder;
-		builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-		builder.RegisterService(&serverConnectService);
-		std::unique_ptr<Server> server(builder.BuildAndStart());
-		std::cout << "master server connector is listening on "<<server_address<<std::endl;
-		server->Wait();
-		
-	}
     
-    //PrimaryWorker create channel to communicate with other PrimaryWorkers to syschronize data
-    //for process not on master server
+    //if the process is the Primary Worker
+    //connect to the worker on the master server
     if(isMaster == false && isLeader == true){
 		std::string masterPrimary = masterServerAddr + ":" + masterConnectorPort;
 		std::shared_ptr<Channel> primary_channel = grpc::CreateChannel(masterPrimary,grpc::InsecureChannelCredentials());
-		masterPrimaryWorker = new ServerConnect(primary_channel, localHostName);
-        
-		std::string server_address = "localhost:"+localPort;
-		ServerConnectImpl serverConnectService;
-        FBChatServerImpl service;
-        
-		ServerBuilder builder;
-		builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-        builder.RegisterService(&service);
-		builder.RegisterService(&serverConnectService);
-		std::unique_ptr<Server> server(builder.BuildAndStart());
-		std::cout << "Primary Worker connector is listening on "<<server_address<<std::endl;
-		server->Wait();
+		masterPrimaryWorker = new ServerConnect(primary_channel, localHostName,masterPrimary);
     }
-    return ;
+	sleep(1);
+	
 }
 
-void RunServer(std::string port_no) {
-  std::string server_address = "0.0.0.0:" + port_no;
+void* heartBeatDetector(void* destAddr){
+	std::string dest_addr = *(static_cast<std::string*>(destAddr));
+	std::string heart_beat_connection = dest_addr;
+	std::shared_ptr<Channel> heart_beat_channel = grpc::CreateChannel(heart_beat_connection,grpc::InsecureChannelCredentials());
+	ServerConnect *server_connect = new ServerConnect(heart_beat_channel, localHostName, dest_addr);
+	if(isMaster == true && isServerConnector == true && (find_server_ID(dest_addr) == 1 || find_server_ID(dest_addr) == 2)){
+		dataConnectVect.push_back(server_connect);
+	}
+	while(true){
+		sleep(1);
+		std::string serverHeartBeatReply = server_connect->ProcHeartBeat(dest_addr);
+	//	std::cout << serverHeartBeatReply << std::endl;
+	//	sleep(10000000);
+	}
+	return 0;
+}
+
+void* runHeartBeat(void *invalid){
+//	printf("Master's port: %s", localPort.c_str());
+//	if(isMaster == false) return 0;
+	if(isMaster == false) {
+		for(int i=0; i < heartBeatCandidate[serverID].size(); i++){
+			std::string candidate = (heartBeatCandidate[serverID])[i];
+			if(!candidate.compare("0.0.0.0:"+localPort))	continue;
+			pthread_t thread_id;
+			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+			sleep(1);
+		}
+	}
+
+	if(isMaster == true && isServerConnector == true){
+//		while(true){
+//			if(slaveServerStatus[1] == 1){
+				for(int i = 0; i < heartBeatCandidate[1].size(); i++){
+					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
+					std::string candidate = (heartBeatCandidate[1])[i];
+					pthread_t thread_id;
+					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+					sleep(1);
+				}
+//				break;				
+//			}
+//		}
+//		while(true){
+//			if(slaveServerStatus[2] == 1){
+				for(int i = 0; i < heartBeatCandidate[2].size(); i++){
+					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
+					std::string candidate = (heartBeatCandidate[2])[i];
+					pthread_t thread_id;
+					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+					sleep(1);
+				}
+//				break;				
+//			}
+//		}
+	}
+	
+	if(isMaster == true && isLeader == true){	
+//		printf("This is master leader ready for monitoring\n");
+		for(int i=0; i < heartBeatCandidate[0].size(); i++){
+			std::string candidate = (heartBeatCandidate[0])[i];
+			if(!candidate.compare("0.0.0.0:"+localPort))	continue;
+			pthread_t thread_id;
+			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+			sleep(1);
+		}
+//		serverMonitored[0] = 1;
+	}
+
+	if(isMaster == true && isLeader == false && isServerConnector == false){
+//		printf("This is master replica ready for monitoring\n");
+		std::string candidate = (heartBeatCandidate[0])[0];	//replica monitors the master process
+		pthread_t thread_id;
+		pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+		sleep(1);
+	}
+		
+	return 0;
+
+}
+
+
+
+//all the processes have a chance to be beat monitored
+void* ListenHeartBeat(void* invalid){
+	std::string server_address = "0.0.0.0:"+localPort;
+	ServerConnectImpl serverConnectService;
+    FBChatServerImpl service;
+    
+	ServerBuilder builder;
+	builder.AddListeningPort(server_address,grpc::InsecureServerCredentials());
+    
+    //Primary worker or Master should connect with client
+    if((!isMaster && isLeader) || (isMaster && isLeader)) builder.RegisterService(&service);
+	builder.RegisterService(&serverConnectService);
+	std::unique_ptr<Server> server(builder.BuildAndStart());
+	std::cout << "port: " << localPort << " is listening" <<std::endl;
+	server->Wait();
+}
+
+void* RunServer(void* invalid) {
+//	std::string port_no = *()
+  std::string server_address = "0.0.0.0:" + localPort;
   FBChatServerImpl service;
 
   ServerBuilder builder;
@@ -841,9 +1189,29 @@ void RunServer(std::string port_no) {
 
 int main(int argc, char** argv) {
 
+
+	std::vector<std::string> server0;
+	std::vector<std::string> server1;
+	std::vector<std::string> server2;
+	server0.push_back("0.0.0.0:6001");
+	server0.push_back("0.0.0.0:6002");
+	server0.push_back("0.0.0.0:6003");
+	server0.push_back("0.0.0.0:6004");
+	server1.push_back("0.0.0.0:6005");
+	server1.push_back("0.0.0.0:6006");
+	server1.push_back("0.0.0.0:6007");
+	server2.push_back("0.0.0.0:6008");
+	server2.push_back("0.0.0.0:6009");
+	server2.push_back("0.0.0.0:6010");
+	heartBeatCandidate.push_back(server0);
+	heartBeatCandidate.push_back(server1);
+	heartBeatCandidate.push_back(server2);
+
+
+
     // Parses options that start with '-' and adding ':' makes it mandontory
       int opt = 0;
-	
+
 	while((opt=getopt(argc, argv, "p:l:m:c:h:s:i:")) != -1){
 		switch(opt){
 			case 'p':localPort=optarg;		break;		
@@ -858,28 +1226,29 @@ int main(int argc, char** argv) {
 	}	
 //      std::string port;
 //      port = argv[1];
-	if(isMaster == true && isLeader == true){
+	if(isServerConnector == 1){
 		slaveServerStatus[0] = 1;	
-		slaveServerStatus[1] = 0;
-		slaveServerStatus[2] = 0;
+		slaveServerStatus[serverID] = 1;
+	}
+	
+	if(isMaster == true && isLeader == true){
+		for(int i = 0; i < heartBeatCandidate.size(); i++){
+			std::ofstream out("leader"+std::to_string(i)+".txt");
+			out << (heartBeatCandidate[i])[0];
+			out.close();
+		}
 	}
     
-    
-	if(!localPort.compare("6001"))	printf("6001 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6002"))	printf("6002 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6003"))	printf("6003 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6004"))	printf("6004 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6005"))	printf("6005 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6006"))	printf("6006 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6007"))	printf("6007 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6008"))	printf("6008 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6009"))	printf("6009 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-	if(!localPort.compare("6010"))	printf("6010 l m c id hs: %d, %d, %d, %d, %s\n",isLeader, isMaster, isServerConnector, serverID, localHostName.c_str());
-    
-    /*pthread_t thread_id;
-    sleep(1);
-    pthread_create(&thread_id, NULL, connectSetup, NULL);
-    sleep(1);*/
+	pthread_t thread_id, heartBeatThread_id, runServerThread_id ;
+	pthread_create(&thread_id, NULL, ListenHeartBeat, (void*) NULL);
+
+	
+    connectSetup();		//this function is mainly set for worker7 and worker10
+	sleep(1);
+//	printf("Master's port: %s\n", localPort.c_str());
+	int rc = pthread_create(&heartBeatThread_id, NULL, runHeartBeat, (void*) NULL);
+	sleep(1);
+	
 
   //cheack if database file is existed or not
     std::string filename = localHostName + "client_database.txt";
@@ -888,12 +1257,14 @@ int main(int argc, char** argv) {
           fout.close();
       }
       
-  std::cout << "Loading Database" << std::endl;
-  LoadDatabase();
-  std::cout << "Loading Successful" << std::endl;
-  
-  connectSetup();
-  RunServer(localPort);
-
+   std::cout << "Loading Database" << std::endl;
+   LoadDatabase();
+   std::cout << "Loading Successful" << std::endl;
+//	pthread_create(&runServerThread_id, NULL, RunServer, (void*) NULL);
+//	sleep(1);
+//  RunServer(localPort);
+	(void)pthread_join(thread_id, NULL);
+	(void)pthread_join(heartBeatThread_id, NULL);
+//	(void)pthread_join(runServerThread_id, NULL);
   return 0;
 }

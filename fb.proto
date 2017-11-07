@@ -47,6 +47,8 @@ service FBChatServer {
 
 service RegisterServer{
 	rpc ServerRegister(ServerReply) returns (ServerReply){}
+	rpc ProcHeartBeat(ServerReply) returns (ServerReply){}
+	rpc Election(ServerReply) returns (ServerReply){}
     rpc Join(DataSync) returns (ServerReply){}
     rpc Login(DataSync) returns (ServerReply){}
     rpc Leave(DataSync) returns (ServerReply){}
@@ -66,7 +68,15 @@ message ShowList {
 
 message ServerReply {
   string message = 1;
-   int32 id = 2;
+  string portnum = 2;
+	int32 id = 3;		//server id
+	int32 leader = 4;	
+}
+
+message Post {
+  string username = 1;
+  string content = 2;
+  google.protobuf.Timestamp timestamp = 3;
 }
 
 message DataSync {
@@ -74,11 +84,5 @@ message DataSync {
     string username = 2;
     string targetname = 3;
     string servername = 4;
-}
-
-message Post {
-  string username = 1;
-  string content = 2;
-  google.protobuf.Timestamp timestamp = 3;
 }
 
