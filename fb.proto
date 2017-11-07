@@ -40,7 +40,9 @@ service FBChatServer {
   rpc List (ClientRequest) returns (ShowList) {}
   rpc Join (ClientRequest) returns (ServerReply) {}
   rpc Leave (ClientRequest) returns (ServerReply) {}
-  rpc Chat (stream Post) returns (stream Post) {} 
+  rpc Chat (stream Post) returns (stream Post) {}
+  rpc Alive (ClientRequest) returns (ServerReply) {}
+  rpc Check (ClientRequest) returns (ServerReply) {}
 }
 
 service RegisterServer{

@@ -22,6 +22,8 @@ using assignment2::ServerReply;
 using assignment2::FBChatServer;
 using namespace std;
 
+string possibleMaster[3] = {"localhost:6001", "localhost:6002", "localhost:6003"};
+bool alive = false;// cheack is the connected PrimaryWorker is alive;
 
 //Helper function used to create a Message object given a username and message
 Post msg_setup(string username, string msg) {
@@ -193,10 +195,43 @@ void Chat (string username) {
 	reader.join();
 }
 
+//check if primary worker is alive
+void Alive(){
+	ClientContext context;
+	ServerReply reply;
+	ClientRequest request;  
+
+	Status status = clientStub->Login(&context, request, &reply);
+	if(status.ok()) return;
+    
+	//if not alive
+	cout<< "Primary Worker Dead" <<endl;
+    cout<< "Please Press Enter to ReConnect" <<endl;
+	alive = false;
+}
+
+//check if it is the master
+string Check(){
+	ClientContext context;
+	ServerReply reply;
+	ClientRequest request;  
+
+	Status status = clientStub->Check(&context, request, &reply);
+    cout<< reply.message() <<endl;
+	if(status.ok() && reply.message() == "isMaster") return "Master";
+    else return "Neg";
+	//if not alive
+	
+}
+
 private:
 	string username;
 	unique_ptr<FBChatServer::Stub> clientStub;
 };
+
+
+Client *connect_to_master;
+Client *connect_to_server;
 
 //in the while loop to receive command line msgs
 string command_exe(Client* connect, string username, string user_input){
@@ -226,6 +261,14 @@ string command_exe(Client* connect, string username, string user_input){
 	return " ";   
 }
 
+//check if Primary Worker is Alive
+void *checkAlive(void *ptr){
+    while(alive){
+        sleep(1);
+        connect_to_server->Alive();
+    }
+}
+
 int main(int argc, char** argv) {
 
 	string hostname, port_number, username;
@@ -249,24 +292,35 @@ int main(int argc, char** argv) {
 			abort();
 		}
 	}
-
-	string info_connection = hostname + ":" + port_number;
-
-	//setup the channel from client to server
-	shared_ptr<Channel> channel_master = grpc::CreateChannel(info_connection, grpc::InsecureChannelCredentials());
-
-	//create a client object to connect to master
-	Client *connect_to_master = new Client(channel_master, username); 
-
+    while(1){
+        
+    bool isMaster = false;
+        
+    while(!isMaster){
+        for(string info: possibleMaster){
+        string info_connection = info;
+        //setup the channel from client to server
+        shared_ptr<Channel> channel_master = grpc::CreateChannel(info_connection, grpc::InsecureChannelCredentials());
+        //create a client object to connect to master
+        connect_to_master = new Client(channel_master, username);
+        string reply = connect_to_master->Check();
+            if(reply == "Master"){
+                isMaster = true;
+                break;
+            }
+        }
+    }
+    
     cout << "Connecting to Master \n";
     string primary_worker_address = connect_to_master->Connect(username);
     cout << primary_worker_address << endl;
+    
     
     //get the port of Primary Worker and connect to the Primary Worker
     cout << "Redirecting to Primary Worker\n";
     shared_ptr<Channel> channel_primary = grpc::CreateChannel(primary_worker_address, grpc::InsecureChannelCredentials());
     
-    Client *connect_to_server = new Client(channel_primary, username);
+    connect_to_server = new Client(channel_primary, username);
     
 	//request to login
 	string login_reply = connect_to_server->Login(username);
@@ -276,21 +330,29 @@ int main(int argc, char** argv) {
 		cout << "This user is already connected \n";
 		return 0;
 	}
+    
+    
   
 	cout << login_reply << endl;
 	cout << "====================You are now in command mode======================\n" ;
-
+    
+    
+    //create a thread to check primary is alive?
+    alive = true;
+    pthread_t tid;
+    pthread_create(&tid, NULL, checkAlive, NULL);
+    
 	string command_line_input; 
-	while(getline(cin, command_line_input)){
+	while(alive && getline(cin, command_line_input)){
 
 		//check client choose to enter into chat mode
 		string s = command_exe(connect_to_server, username, command_line_input);
 
         	if(s == "CHAT")	break;
-		if(s == "NO THIS COMMAND") cout << "NO THIS COMMAND" << endl;
+		if(alive && s == "NO THIS COMMAND") cout << "NO THIS COMMAND" << endl;
 	}
-
 	//enter chat mode out of the while loop above
-	connect_to_server->Chat(username);
+	if(alive) connect_to_server->Chat(username);
+    }
 	return 0;
 }

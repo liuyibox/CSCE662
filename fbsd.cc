@@ -309,11 +309,11 @@ public:
 		primaryUpdateRequest.set_username(username);
         primaryUpdateRequest.set_servername(localHostName);
         
-		std::cout<<"Synchronizing with other workers"<<std::endl;
+		std::cout<< localHostName + "Synchronizing with other workers"<<std::endl;
         
 		Status status = serverStub->updateTimeLine(&context, primaryUpdateRequest, &PrimaryUpdateReply);
         
-        std::cout<<"Finished"<<std::endl;
+        std::cout<< localHostName  + "Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Timeline\n";
@@ -330,7 +330,6 @@ public:
         primaryMsgRequest.set_targetname(targetname);
         primaryMsgRequest.set_servername(localHostName);
         
-		std::cout<<"msg"<<std::endl;
         
 		Status status = serverStub->msgForward(&context, primaryMsgRequest, &PrimaryUpdateReply);
         
@@ -678,8 +677,17 @@ class FBChatServerImpl final : public FBChatServer::Service {
     }
     return Status::OK;
   }
-
-
+  
+   Status Alive(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+       return Status::OK;
+   }
+   
+   Status Check(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+       if(isMaster && isLeader){
+           reply->set_message("isMaster");
+       }
+       return Status::OK;
+   }
   //let client makes post and forwards it to all the clients it has joined
   //use ServerReaderWriter to communicate with client
   Status Chat(ServerContext* context, 
@@ -817,15 +825,12 @@ void RunServer(std::string port_no) {
   FBChatServerImpl service;
 
   ServerBuilder builder;
-  std::cout << "t1"<< std::endl;
   // Listen on the given address without any authentication mechanism.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
   // Register "service" as the instance through which we'll communicate with
   // clients. In this case it corresponds to an *synchronous* service.
-  std::cout << "t1"<< std::endl;
   builder.RegisterService(&service);
   // Finally assemble the server.
-  std::cout << "t1"<< std::endl;
   std::unique_ptr<Server> server(builder.BuildAndStart());
   std::cout << "Server listening for clients on " << server_address << std::endl;
 
