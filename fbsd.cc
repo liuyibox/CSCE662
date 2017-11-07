@@ -1163,7 +1163,7 @@ void* ListenHeartBeat(void* invalid){
     if((!isMaster && isLeader) || (isMaster && isLeader)) builder.RegisterService(&service);
 	builder.RegisterService(&serverConnectService);
 	std::unique_ptr<Server> server(builder.BuildAndStart());
-	std::cout << "port: " << localPort << " is listening" <<std::endl;
+	std::cout << "port: " << localPort << " is listening with process id:" << getpid() <<std::endl;
 	server->Wait();
 }
 
