@@ -980,6 +980,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
   }
 
   Status Alive(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
+      if(!isMaster && isLeader)
       return Status::OK;
   }
   
