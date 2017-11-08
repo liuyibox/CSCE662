@@ -316,7 +316,7 @@ void* startSlaveProc(void* destAddr){
 //	printf("\n");
 	
 	if(std::system(cmd.c_str()) == -1) std::cout<< "failed when execute <" + cmd + ">" << std::endl;
-	sleep(5);
+//	sleep(5);
 }
 
 
