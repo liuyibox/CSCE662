@@ -342,7 +342,7 @@ public:
 
 			if(isMaster == true && isServerConnector == true){
 				if(heartBeatReply.leader() == 1){
-                    std::cout << "leader on server " << dest_server_id << " is " + destAddr << std::endl;
+                 //   std::cout << "leader on server " << dest_server_id << " is " + destAddr << std::endl;
 				//	if(!destAddr.compare((heartBeatCandidate[dest_server_id])[0])){
 						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
 						newfile << destAddr;
