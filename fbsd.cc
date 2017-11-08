@@ -1174,7 +1174,7 @@ void* ListenHeartBeat(void* invalid){
 	builder.AddListeningPort(server_address,grpc::InsecureServerCredentials());
     
     //Primary worker or Master should connect with client
-    if((!isMaster) || (isMaster && isLeader)) builder.RegisterService(&service);
+    if((!isMaster) || (isMaster && !isServerConnector)) builder.RegisterService(&service);
 	builder.RegisterService(&serverConnectService);
 	std::unique_ptr<Server> server(builder.BuildAndStart());
 	std::cout << "port: " << localPort << " is listening with process id:" << getpid() <<std::endl;

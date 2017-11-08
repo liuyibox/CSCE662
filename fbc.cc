@@ -295,7 +295,7 @@ int main(int argc, char** argv) {
     while(1){
         
     bool isMaster = false;
-        
+    int count = 3;
     while(!isMaster){
         for(string info: possibleMaster){
         string info_connection = info;
@@ -308,6 +308,10 @@ int main(int argc, char** argv) {
                 isMaster = true;
                 break;
             }
+        if(--count == 0){
+            cout << "Error when connecting to server, please try again later!!";
+            abort();
+        }
         }
     }
     
