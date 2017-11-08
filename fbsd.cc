@@ -107,7 +107,7 @@ int find_server_ID(std::string addr){
 
 bool isLeaderDown(std::string addr){
     int down_id = find_server_ID(addr);
-    if(addr.compare((heartBeatCandidate[down_id])[0]) == 0)
+    if(addr.compare(leaderAddr) == 0)
         return true;
     else
         return false;
