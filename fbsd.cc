@@ -362,7 +362,7 @@ public:
 			return heartBeatReply.message();
 		}
 		else{
-			std::cout << localPort + " detected a dead process at " + destAddr  << std::endl;
+		//	std::cout << localPort + " detected a dead process at " + destAddr  << std::endl;
 			//we detect a dead process, first we check if the server is down
 			if(isMaster == true && isServerConnector == true){
 				slaveServerStatus[dest_server_id] = 0;
@@ -403,7 +403,7 @@ public:
 		ServerReply masterServerReply;
 		slaveServerRequest.set_message(serverName);
 		slaveServerRequest.set_id(serverID);
-		std::cout<<"Hello World! from slave server"<<std::endl;
+	//	std::cout<<"Hello World! from slave server"<<std::endl;
 		Status status = serverStub->ServerRegister(&context, slaveServerRequest, &masterServerReply);
 		if(status.ok()) {
 			return masterServerReply.message();	
@@ -573,7 +573,7 @@ class ServerConnectImpl final:public RegisterServer::Service{
 		return Status::OK;
 	}
 	Status ServerRegister(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
-		std::cout<<"Hello World! from master server"<<std::endl;
+	//	std::cout<<"Hello World! from master server"<<std::endl;
 		int request_server_id = (int)(request->id());
 		if (slaveServerStatus[request_server_id] == 0){
 			slaveServerStatus[request_server_id] = 1;
@@ -1124,7 +1124,7 @@ void* runHeartBeat(void *invalid){
 //		while(true){
 //			if(slaveServerStatus[1] == 1){
 				for(int i = 0; i < heartBeatCandidate[1].size(); i++){
-					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
+//					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
 					std::string candidate = (heartBeatCandidate[1])[i];
 					pthread_t thread_id;
 					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
@@ -1136,7 +1136,7 @@ void* runHeartBeat(void *invalid){
 //		while(true){
 //			if(slaveServerStatus[2] == 1){
 				for(int i = 0; i < heartBeatCandidate[2].size(); i++){
-					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
+//					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
 					std::string candidate = (heartBeatCandidate[2])[i];
 					pthread_t thread_id;
 					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
