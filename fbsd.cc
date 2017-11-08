@@ -53,6 +53,7 @@ std::vector<std::string> connected_clients; // record the username of clients th
 bool isMaster = false;
 bool isLeader = false;
 std::string localPort="10000";
+std::string leaderAddr="0.0.0.0:9000";
 bool isServerConnector=false;
 std::string localHostName="localhost";
 std::string masterServerAddr="localhost";
@@ -67,6 +68,7 @@ int slaveServerStatus[3];	//0-master,1-server1,2-server2, this indicates if serv
 //int serverMonitored[3];		//0-master,1-server1,2-server2, this indicates if processes on each is monitored
 std::vector<std::vector<std::string>> heartBeatCandidate;
 std::vector<ServerConnect*> dataConnectVect;
+std::vector<ServerConnect*> localConnect;
 
 ServerConnect* masterPrimaryWorker;
 
@@ -339,7 +341,12 @@ public:
 		Status status = serverStub->ProcHeartBeat(&context, heartBeatRequest, &heartBeatReply);
 		int dest_server_id = find_server_ID(destAddr);
 		if(status.ok()) {
-
+			
+			if(dest_server_id == serverID && heartBeatReply.leader() == 1){
+				leaderAddr = destAddr;
+			}
+			
+			
 			if(isMaster == true && isServerConnector == true){
 				if(heartBeatReply.leader() == 1){
                  //   std::cout << "leader on server " << dest_server_id << " is " + destAddr << std::endl;
@@ -427,11 +434,12 @@ public:
 			//once on the same machine, we do election
 			isLeader = true;
 			if(find_server_ID(dest_addr) == serverID){
-				for(int i = 1; i < (heartBeatCandidate[serverID]).size(); i++){
+				for(int i = 0; i < localConnect.size(); i++){
 					std::string election_connection = (heartBeatCandidate[serverID])[i];
 					if(!(election_connection.compare("0.0.0.0:"+localPort))) continue;
-					std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
-					ServerConnect *server_connect = new ServerConnect(election_channel, localHostName, election_connection);
+					if(!(localConnect[i]->localPortName).compare(dest_addr)) continue;
+				//	std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
+				//	ServerConnect *server_connect = new ServerConnect(election_channel, localHostName, election_connection);
 					std::string electionReply = server_connect->Election();
 				//	std::cout << localPort << "get the voted message:" << electionReply << std::endl;
 					if((electionReply).compare(localPort) > 0){ 
@@ -1089,6 +1097,7 @@ void* heartBeatDetector(void* destAddr){
 	if(isMaster == true && isServerConnector == true && (find_server_ID(dest_addr) == 1 || find_server_ID(dest_addr) == 2)){
 		dataConnectVect.push_back(server_connect);
 	}
+	localConnect.pushback(server_connect);
 	while(true){
 		sleep(1);
 		std::string serverHeartBeatReply = server_connect->ProcHeartBeat(dest_addr);
