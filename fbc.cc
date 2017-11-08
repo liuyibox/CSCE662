@@ -175,6 +175,7 @@ void Chat (string username) {
                 
 				chat_msg = msg_setup(username, chat_input);
 				read_write->Write(chat_msg);
+                if(!alive) break;
         		}
 	        	read_write->WritesDone();
 		}
@@ -184,8 +185,9 @@ void Chat (string username) {
 	thread reader(
 		[username, read_write]() {
 			Post msg;
-			while(read_write->Read(&msg)){
+			while( alive && read_write->Read(&msg)){
 				cout << msg.username() << " posted \"" << msg.content() << "\""  << endl;
+                if(!alive) break;
 			}
 		}
 	);
@@ -193,6 +195,7 @@ void Chat (string username) {
 	//Wait for the threads to finish
 	writer.join();
 	reader.join();
+
 }
 
 //check if primary worker is alive
@@ -263,9 +266,10 @@ string command_exe(Client* connect, string username, string user_input){
 
 //check if Primary Worker is Alive
 void *checkAlive(void *ptr){
-    while(alive){
+    while(1){
         sleep(1);
         connect_to_server->Alive();
+        if(!alive) break;
     }
 }
 

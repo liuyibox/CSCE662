@@ -468,11 +468,12 @@ public:
 		primaryJoinRequest.set_username(username1);
 		primaryJoinRequest.set_targetname(username2);
         primaryJoinRequest.set_servername(localHostName);
-		std::cout<<"Synchronizing with other workers"<<std::endl;
+        
+		//std::cout<<"Synchronizing with other workers"<<std::endl;
         
 		Status status = serverStub->Join(&context, primaryJoinRequest, &PrimaryUpdateReply);
         
-        std::cout<<"Finished"<<std::endl;
+        //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Database\n";
@@ -485,11 +486,11 @@ public:
 		ServerReply PrimaryUpdateReply;
 		primaryLoginRequest.set_username(username);
         primaryLoginRequest.set_servername(localHostName);
-		std::cout<<"Synchronizing with other workers"<<std::endl;
+		//std::cout<<"Synchronizing with other workers"<<std::endl;
         
 		Status status = serverStub->Login(&context, primaryLoginRequest, &PrimaryUpdateReply);
         
-        std::cout<<"Finished"<<std::endl;
+        //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Database\n";
@@ -503,11 +504,11 @@ public:
 		primaryLeaveRequest.set_username(username1);
 		primaryLeaveRequest.set_targetname(username2);
         primaryLeaveRequest.set_servername(localHostName);
-		std::cout<<"Synchronizing with other workers"<<std::endl;
+		//std::cout<<"Synchronizing with other workers"<<std::endl;
         
 		Status status = serverStub->Leave(&context, primaryLeaveRequest, &PrimaryUpdateReply);
         
-        std::cout<<"Finished"<<std::endl;
+        //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Database\n";
@@ -521,11 +522,11 @@ public:
 		primaryUpdateRequest.set_username(username);
         primaryUpdateRequest.set_servername(localHostName);
         
-		std::cout<< localHostName + "Synchronizing with other workers"<<std::endl;
+		//std::cout<< localHostName + "Synchronizing with other workers"<<std::endl;
         
 		Status status = serverStub->updateTimeLine(&context, primaryUpdateRequest, &PrimaryUpdateReply);
         
-        std::cout<< localHostName  + "Finished"<<std::endl;
+        //std::cout<< localHostName  + "Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Timeline\n";
@@ -545,7 +546,7 @@ public:
         
 		Status status = serverStub->msgForward(&context, primaryMsgRequest, &PrimaryUpdateReply);
         
-        std::cout<<"Finished"<<std::endl;
+        //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Timeline\n";
