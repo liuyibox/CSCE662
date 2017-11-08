@@ -438,6 +438,7 @@ public:
 					std::string election_connection = (heartBeatCandidate[serverID])[i];
 					if(!(election_connection.compare("0.0.0.0:"+localPort))) continue;
 					if(!(localConnect[i]->localPortName).compare(dest_addr)) continue;
+					ServerConnect *server_connect = localConnect[i];
 				//	std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
 				//	ServerConnect *server_connect = new ServerConnect(election_channel, localHostName, election_connection);
 					std::string electionReply = server_connect->Election();
@@ -1097,7 +1098,7 @@ void* heartBeatDetector(void* destAddr){
 	if(isMaster == true && isServerConnector == true && (find_server_ID(dest_addr) == 1 || find_server_ID(dest_addr) == 2)){
 		dataConnectVect.push_back(server_connect);
 	}
-	localConnect.pushback(server_connect);
+	localConnect.push_back(server_connect);
 	while(true){
 		sleep(1);
 		std::string serverHeartBeatReply = server_connect->ProcHeartBeat(dest_addr);
