@@ -1280,7 +1280,7 @@ int main(int argc, char** argv) {
           fout.close();
       }
       
-   std::cout << "Loading Database" << std::endl;
+//   std::cout << "Loading Database" << std::endl;
    LoadDatabase();
    std::cout << "Loading Successful" << std::endl;
 //	pthread_create(&runServerThread_id, NULL, RunServer, (void*) NULL);
