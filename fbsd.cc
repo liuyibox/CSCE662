@@ -831,12 +831,12 @@ class FBChatServerImpl final : public FBChatServer::Service {
           }
           
           
-          if(p_worker_info[1].hostname == " " || p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
+          if(p_worker_info[1].hostname == " " || p_worker_info[0].hostname != " " && p_worker_info[0].connected_clients <= p_worker_info[1].connected_clients){
               primaryWorkerAddress = p_worker_info[0].hostname;
               p_worker_info[0].connected_clients++;
             
           }
-          else if(p_worker_info[0].hostname == " " || p_worker_info[1].connected_clients <= p_worker_info[0].connected_clients){
+          else if(p_worker_info[0].hostname == " " || p_worker_info[1].hostname != " " && p_worker_info[1].connected_clients <= p_worker_info[0].connected_clients){
               primaryWorkerAddress = p_worker_info[1].hostname;
               p_worker_info[1].connected_clients++;
           }
