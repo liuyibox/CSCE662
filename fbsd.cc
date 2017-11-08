@@ -1147,7 +1147,7 @@ void* runHeartBeat(void *invalid){
 //		}
 	}
 	
-	if(isMaster == true && isLeader == true){	
+	if(isMaster == true && isServerConnector == false){	
 //		printf("This is master leader ready for monitoring\n");
 		for(int i=0; i < heartBeatCandidate[0].size(); i++){
 			std::string candidate = (heartBeatCandidate[0])[i];
@@ -1159,13 +1159,13 @@ void* runHeartBeat(void *invalid){
 //		serverMonitored[0] = 1;
 	}
 
-	if(isMaster == true && isLeader == false && isServerConnector == false){
+//	if(isMaster == true && isLeader == false && isServerConnector == false){
 //		printf("This is master replica ready for monitoring\n");
-		std::string candidate = (heartBeatCandidate[0])[0];	//replica monitors the master process
-		pthread_t thread_id;
-		pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
-		sleep(1);
-	}
+//		std::string candidate = (heartBeatCandidate[0])[0];	//replica monitors the master process
+//		pthread_t thread_id;
+//		pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+//		sleep(1);
+//	}
 		
 	return 0;
 
