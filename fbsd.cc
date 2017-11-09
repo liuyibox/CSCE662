@@ -58,12 +58,9 @@ std::string leaderAddr="lenss-comp1.cse.tamu.edu:9000";
 bool isServerConnector=false;
 
 std::string localHostName="localhost";
-<<<<<<< Updated upstream
 std::string masterServerAddr="lenss-comp1.cse.tamu.edu";
-=======
 
 std::string masterServerAddr="localhost";
->>>>>>> Stashed changes
 std::string masterConnectorPort="6004";
 
 
