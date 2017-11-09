@@ -1178,26 +1178,6 @@ void* ListenHeartBeat(void* invalid){
 	server->Wait();
 }
 
-void* RunServer(void* invalid) {
-//	std::string port_no = *()
-  std::string server_address = "0.0.0.0:" + localPort;
-  FBChatServerImpl service;
-
-  ServerBuilder builder;
-  // Listen on the given address without any authentication mechanism.
-  builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-  // Register "service" as the instance through which we'll communicate with
-  // clients. In this case it corresponds to an *synchronous* service.
-  builder.RegisterService(&service);
-  // Finally assemble the server.
-  std::unique_ptr<Server> server(builder.BuildAndStart());
-  std::cout << "Server listening for clients on " << server_address << std::endl;
-
-  // Wait for the server to shutdown. Note that some other thread must be
-  // responsible for shutting down the server for this call to ever return.
-  server->Wait();
-}
-
 int main(int argc, char** argv) {
 
 
@@ -1208,12 +1188,12 @@ int main(int argc, char** argv) {
 	server0.push_back("lenss-comp1.cse.tamu.edu:6002");
 	server0.push_back("lenss-comp1.cse.tamu.edu:6003");
 	server0.push_back("lenss-comp1.cse.tamu.edu:6004");
-	server1.push_back("lenss-comp2.cse.tamu.edu:6005");
-	server1.push_back("lenss-comp2.cse.tamu.edu:6006");
-	server1.push_back("lenss-comp2.cse.tamu.edu:6007");
-	server2.push_back("lenss-comp3.cse.tamu.edu:6008");
-	server2.push_back("lenss-comp3.cse.tamu.edu:6009");
-	server2.push_back("lenss-comp3.cse.tamu.edu:6010");
+	server1.push_back("lenss-comp3.cse.tamu.edu:6005");
+	server1.push_back("lenss-comp3.cse.tamu.edu:6006");
+	server1.push_back("lenss-comp3.cse.tamu.edu:6007");
+	server2.push_back("lenss-comp4.cse.tamu.edu:6008");
+	server2.push_back("lenss-comp4.cse.tamu.edu:6009");
+	server2.push_back("lenss-comp4.cse.tamu.edu:6010");
 	heartBeatCandidate.push_back(server0);
 	heartBeatCandidate.push_back(server1);
 	heartBeatCandidate.push_back(server2);
@@ -1258,6 +1238,7 @@ int main(int argc, char** argv) {
 		localServer="lenss-comp4.cse.tamu.edu:";
 	else
 		std::cout << "your server id is not correct!" << std::endl;
+	std::cout << localServer;
 	
 	pthread_t thread_id, heartBeatThread_id, runServerThread_id ;
 	pthread_create(&thread_id, NULL, ListenHeartBeat, (void*) NULL);
