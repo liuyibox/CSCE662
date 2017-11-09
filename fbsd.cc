@@ -59,8 +59,6 @@ bool isServerConnector=false;
 
 std::string localHostName="localhost";
 std::string masterServerAddr="lenss-comp1.cse.tamu.edu";
-
-std::string masterServerAddr="localhost";
 std::string masterConnectorPort="6004";
 
 
