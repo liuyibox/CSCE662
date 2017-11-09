@@ -53,10 +53,11 @@ std::vector<std::string> connected_clients; // record the username of clients th
 bool isMaster = false;
 bool isLeader = false;
 std::string localPort="10000";
-std::string leaderAddr="0.0.0.0:9000";
+std::string localServer="lenss-comp1.cse.tamu.edu:";
+std::string leaderAddr="lenss-comp1.cse.tamu.edu:9000";
 bool isServerConnector=false;
 std::string localHostName="localhost";
-std::string masterServerAddr="localhost";
+std::string masterServerAddr="lenss-comp1.cse.tamu.edu";
 std::string masterConnectorPort="6004";
 
 
@@ -99,14 +100,14 @@ int find_user(std::string username){
 
 int find_server_ID(std::string addr){
 	
-	if(addr.compare("0.0.0.0:6004") <= 0) return 0;
-	if(addr.compare("0.0.0.0:6007") <= 0) return 1;
+	if(addr.compare("lenss-comp1.cse.tamu.edu:6004") <= 0) return 0;
+	if(addr.compare("lenss-comp3.cse.tamu.edu:6007") <= 0) return 1;
 	return 2;
 
 }
 
 bool isLeaderDown(std::string addr){
-    int down_id = find_server_ID(addr);
+//    int down_id = find_server_ID(addr);
     if(addr.compare(leaderAddr) == 0)
         return true;
     else
@@ -436,7 +437,7 @@ public:
 			if(find_server_ID(dest_addr) == serverID){
 				for(int i = 0; i < localConnect.size(); i++){
 					std::string election_connection = (heartBeatCandidate[serverID])[i];
-					if(!(election_connection.compare("0.0.0.0:"+localPort))) continue;
+					if(!(election_connection.compare(localServer+localPort))) continue;
 					if(!(localConnect[i]->localPortName).compare(dest_addr)) continue;
 					ServerConnect *server_connect = localConnect[i];
 				//	std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
@@ -1106,7 +1107,7 @@ void* runHeartBeat(void *invalid){
 	if(isMaster == false) {
 		for(int i=0; i < heartBeatCandidate[serverID].size(); i++){
 			std::string candidate = (heartBeatCandidate[serverID])[i];
-			if(!candidate.compare("0.0.0.0:"+localPort))	continue;
+			if(!candidate.compare(localServer+localPort))	continue;
 			pthread_t thread_id;
 			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
 			sleep(1);
@@ -1144,7 +1145,7 @@ void* runHeartBeat(void *invalid){
 //		printf("This is master leader ready for monitoring\n");
 		for(int i=0; i < heartBeatCandidate[0].size(); i++){
 			std::string candidate = (heartBeatCandidate[0])[i];
-			if(!candidate.compare("0.0.0.0:"+localPort))	continue;
+			if(!candidate.compare(localServer+localPort))	continue;
 			pthread_t thread_id;
 			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
 			sleep(1);
@@ -1168,7 +1169,7 @@ void* runHeartBeat(void *invalid){
 
 //all the processes have a chance to be beat monitored
 void* ListenHeartBeat(void* invalid){
-	std::string server_address = "0.0.0.0:"+localPort;
+	std::string server_address = localServer+localPort;
 	ServerConnectImpl serverConnectService;
     FBChatServerImpl service;
     
@@ -1209,16 +1210,16 @@ int main(int argc, char** argv) {
 	std::vector<std::string> server0;
 	std::vector<std::string> server1;
 	std::vector<std::string> server2;
-	server0.push_back("0.0.0.0:6001");
-	server0.push_back("0.0.0.0:6002");
-	server0.push_back("0.0.0.0:6003");
-	server0.push_back("0.0.0.0:6004");
-	server1.push_back("0.0.0.0:6005");
-	server1.push_back("0.0.0.0:6006");
-	server1.push_back("0.0.0.0:6007");
-	server2.push_back("0.0.0.0:6008");
-	server2.push_back("0.0.0.0:6009");
-	server2.push_back("0.0.0.0:6010");
+	server0.push_back("lenss-comp1.cse.tamu.edu:6001");
+	server0.push_back("lenss-comp1.cse.tamu.edu:6002");
+	server0.push_back("lenss-comp1.cse.tamu.edu:6003");
+	server0.push_back("lenss-comp1.cse.tamu.edu:6004");
+	server1.push_back("lenss-comp2.cse.tamu.edu:6005");
+	server1.push_back("lenss-comp2.cse.tamu.edu:6006");
+	server1.push_back("lenss-comp2.cse.tamu.edu:6007");
+	server2.push_back("lenss-comp3.cse.tamu.edu:6008");
+	server2.push_back("lenss-comp3.cse.tamu.edu:6009");
+	server2.push_back("lenss-comp3.cse.tamu.edu:6010");
 	heartBeatCandidate.push_back(server0);
 	heartBeatCandidate.push_back(server1);
 	heartBeatCandidate.push_back(server2);
@@ -1255,6 +1256,15 @@ int main(int argc, char** argv) {
 		}
 	}
     
+	if(serverID == 0)
+		localServer="lenss-comp1.cse.tamu.edu:";
+	else if(serverID == 1)
+		localServer="lenss-comp3.cse.tamu.edu:";
+	else if(serverID == 2)
+		localServer="lenss-comp4.cse.tamu.edu:";
+	else
+		std::cout << "your server id is not correct!" << std::endl;
+	
 	pthread_t thread_id, heartBeatThread_id, runServerThread_id ;
 	pthread_create(&thread_id, NULL, ListenHeartBeat, (void*) NULL);
 
