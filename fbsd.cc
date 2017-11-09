@@ -454,7 +454,8 @@ public:
 			}
 			//sleep(5);
 			if(isLeader == true){
-				std::cout << localPort << "is leader and is recreating a slave process to run " << dest_addr << std::endl;
+				LoadDatabase();
+				std::cout << "leader " + localPort << "loaded database and is recreating a slave process to run at " << dest_addr << std::endl;
 				pthread_t startSlaveProc_id;
 				pthread_create(&startSlaveProc_id, NULL, startSlaveProc, static_cast<void*>(&destAddr));
 				sleep(1);
