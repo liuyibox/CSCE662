@@ -22,7 +22,7 @@ using assignment2::ServerReply;
 using assignment2::FBChatServer;
 using namespace std;
 
-string possibleMaster[3] = {"localhost:6001", "localhost:6002", "localhost:6003"};
+string possibleMaster[3] = {"lenss-comp1.cse.tamu.edu:6001", "lenss-comp1.cse.tamu.edu:6002", "lenss-comp1.cse.tamu.edu:6003"};
 bool alive = false;// cheack is the connected PrimaryWorker is alive;
 
 //Helper function used to create a Message object given a username and message

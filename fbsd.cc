@@ -56,8 +56,14 @@ std::string localPort="10000";
 std::string localServer="lenss-comp1.cse.tamu.edu:";
 std::string leaderAddr="lenss-comp1.cse.tamu.edu:9000";
 bool isServerConnector=false;
+
 std::string localHostName="localhost";
+<<<<<<< Updated upstream
 std::string masterServerAddr="lenss-comp1.cse.tamu.edu";
+=======
+
+std::string masterServerAddr="localhost";
+>>>>>>> Stashed changes
 std::string masterConnectorPort="6004";
 
 
@@ -932,7 +938,6 @@ class FBChatServerImpl final : public FBChatServer::Service {
     std::string filename = localHostName + username +".txt";
     int idx = find_user(username);
     if(idx == -1){  // first timelogin
-        std::cout<< "t1"<<std::endl;
       c.username = username;
       c.connect_status = true;
       client_db.push_back(c);
@@ -941,11 +946,8 @@ class FBChatServerImpl final : public FBChatServer::Service {
           fout.close();
       }
       reply->set_message("Login Successful!");
-      std::cout<< "t2"<<std::endl;
       connected_clients.push_back(username);
-      std::cout<< "t3"<<std::endl;
       UpdateDatabase(&c);
-      std::cout<< "t4"<<std::endl;
       masterPrimaryWorker->Login(username);
     }
     else{ 
@@ -959,12 +961,9 @@ class FBChatServerImpl final : public FBChatServer::Service {
               std::ofstream fout(filename,std::ios::out);
               fout.close();
           }
-          std::cout<< "tt1"<<std::endl;
         std::string msg = "Welcome Back " + user->username;
         reply->set_message(msg);
-        std::cout<< "tt1"<<std::endl;
         connected_clients.push_back(user->username);
-        std::cout<< "tt1"<<std::endl;
         user->connect_status = true;
       }
     }
