@@ -152,7 +152,6 @@ std::string find_port(std::string addr){
 //Each time when client "JOIN", "LEAVE" or log in, we should synchronize
 //our client database
 void UpdateDatabase(Client *client){
-    
     //easy implement for serializing client(use its username and the clients it has joined)
     std::string update = client->username + " joined:";
     for(Client *c: client->joined){
@@ -462,7 +461,9 @@ public:
 			}
 		}
 	}
+
     
+    //Synchronizing join function
     void Join(std::string username1, std::string username2){
 		ClientContext context;
 		DataSync primaryJoinRequest;
@@ -470,31 +471,23 @@ public:
 		primaryJoinRequest.set_username(username1);
 		primaryJoinRequest.set_targetname(username2);
         primaryJoinRequest.set_servername(localHostName);
-        
-		//std::cout<<"Synchronizing with other workers"<<std::endl;
-        
 		Status status = serverStub->Join(&context, primaryJoinRequest, &PrimaryUpdateReply);
-        
-        //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
-
 		std::cout<< "failed at Synchronizing Database\n";
 		abort();
     }
     
+    //synchronizing Login function
     void Login(std::string username){
 		ClientContext context;
 		DataSync primaryLoginRequest;
 		ServerReply PrimaryUpdateReply;
 		primaryLoginRequest.set_username(username);
         primaryLoginRequest.set_servername(localHostName);
-		//std::cout<<"Synchronizing with other workers"<<std::endl;
-        
 		Status status = serverStub->Login(&context, primaryLoginRequest, &PrimaryUpdateReply);
         
         //std::cout<<"Finished"<<std::endl;
 		if(status.ok()) return;
-
 		std::cout<< "failed at Synchronizing Database\n";
 		abort();
     }
@@ -506,8 +499,7 @@ public:
 		primaryLeaveRequest.set_username(username1);
 		primaryLeaveRequest.set_targetname(username2);
         primaryLeaveRequest.set_servername(localHostName);
-		//std::cout<<"Synchronizing with other workers"<<std::endl;
-        
+
 		Status status = serverStub->Leave(&context, primaryLeaveRequest, &PrimaryUpdateReply);
         
         //std::cout<<"Finished"<<std::endl;
@@ -523,12 +515,7 @@ public:
 		primaryUpdateRequest.set_message(post);
 		primaryUpdateRequest.set_username(username);
         primaryUpdateRequest.set_servername(localHostName);
-        
-		//std::cout<< localHostName + "Synchronizing with other workers"<<std::endl;
-        
 		Status status = serverStub->updateTimeLine(&context, primaryUpdateRequest, &PrimaryUpdateReply);
-        
-        //std::cout<< localHostName  + "Finished"<<std::endl;
 		if(status.ok()) return;
 
 		std::cout<< "failed at Synchronizing Timeline\n";
@@ -544,8 +531,6 @@ public:
 		primaryMsgRequest.set_username(username);
         primaryMsgRequest.set_targetname(targetname);
         primaryMsgRequest.set_servername(localHostName);
-        
-        
 		Status status = serverStub->msgForward(&context, primaryMsgRequest, &PrimaryUpdateReply);
         
         //std::cout<<"Finished"<<std::endl;
@@ -658,13 +643,12 @@ class ServerConnectImpl final:public RegisterServer::Service{
       }
       outfile.close();
       file.close();
-      //std::string temp = username + ".txt";
-      //const char *k = temp.c_str();
       const char *k = filename.c_str();
       rename(k, "del.txt");
       rename("in2.txt", k);
       remove("del.txt");//Delete temp txt
       
+      //propagate to other server
       if(isMaster == true && isServerConnector==true){
           if(request->servername() == "server1"){
               std::string address = getLeader2();
@@ -828,8 +812,9 @@ Status Leave(ServerContext* context, const DataSync* request, ServerReply* reply
 //Communication with client
 class FBChatServerImpl final : public FBChatServer::Service {
     
+    //Master Server allocate avaliable Primary Worker for Client to connect.
     Status Connect(ServerContext* context, const ClientRequest* request, ServerReply* reply) override {
-          std::cout<< "Master side"<<std::endl;
+          std::cout<< "Master side" + request->username() <<std::endl;
           std::string primaryWorkerAddress;
           
           p_worker_info[0].hostname = getLeader1();
@@ -946,6 +931,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
     std::string filename = localHostName + username +".txt";
     int idx = find_user(username);
     if(idx == -1){  // first timelogin
+        std::cout<< "t1"<<std::endl;
       c.username = username;
       c.connect_status = true;
       client_db.push_back(c);
@@ -954,15 +940,16 @@ class FBChatServerImpl final : public FBChatServer::Service {
           fout.close();
       }
       reply->set_message("Login Successful!");
-      
+      std::cout<< "t2"<<std::endl;
       connected_clients.push_back(username);
-      
+      std::cout<< "t3"<<std::endl;
       UpdateDatabase(&c);
-     
+      std::cout<< "t4"<<std::endl;
       masterPrimaryWorker->Login(username);
     }
     else{ 
       Client *user = &client_db[idx];
+      std::cout<< "tt1"<<std::endl;
       if(user->connect_status){
         reply->set_message("Invalid Username");
         }
@@ -971,9 +958,12 @@ class FBChatServerImpl final : public FBChatServer::Service {
               std::ofstream fout(filename,std::ios::out);
               fout.close();
           }
+          std::cout<< "tt1"<<std::endl;
         std::string msg = "Welcome Back " + user->username;
         reply->set_message(msg);
+        std::cout<< "tt1"<<std::endl;
         connected_clients.push_back(user->username);
+        std::cout<< "tt1"<<std::endl;
         user->connect_status = true;
       }
     }
@@ -1003,8 +993,6 @@ class FBChatServerImpl final : public FBChatServer::Service {
       std::string username = post.username();
       int user_index = find_user(username);
       c = &client_db[user_index];
-      
-      std::cout<< post.content() << std::endl;
       
       std::string filename = localHostName + username +".txt";
       
@@ -1085,7 +1073,7 @@ void connectSetup(){
     
     //if the process is the Primary Worker
     //connect to the worker on the master server
-    if(isMaster == false && isLeader == true){
+    if(isMaster == false && isServerConnector == false){
 		std::string masterPrimary = masterServerAddr + ":" + masterConnectorPort;
 		std::shared_ptr<Channel> primary_channel = grpc::CreateChannel(masterPrimary,grpc::InsecureChannelCredentials());
 		masterPrimaryWorker = new ServerConnect(primary_channel, localHostName,masterPrimary);

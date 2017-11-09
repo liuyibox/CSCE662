@@ -178,6 +178,7 @@ void Chat (string username) {
                 if(!alive) break;
         		}
 	        	read_write->WritesDone();
+                cout << "witer thread quit" << endl;
 		}
 	);
 
@@ -189,6 +190,7 @@ void Chat (string username) {
 				cout << msg.username() << " posted \"" << msg.content() << "\""  << endl;
                 if(!alive) break;
 			}
+            cout << "reader thread quit" << endl;
 		}
 	);
 
