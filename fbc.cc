@@ -131,7 +131,7 @@ string Connect(string uername){
 	Status status = clientStub->Connect(&context, request, &reply);
 
 	if(status.ok()) return reply.message();
-    cout << status.error_details()<< endl;
+//    cout << status.error_details()<< endl;
 	//if Connect failed
 	cout<< "failed at connecting to server\n";
 	abort();
