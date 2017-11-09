@@ -282,9 +282,7 @@ int main(int argc, char** argv) {
 		cout << "Usage: ./fbc <hostname> <port> <username>\n";
 		abort();
 	}else{
-		hostname = string(argv[1]);
-		port_number = string(argv[2]);
-		username = string(argv[3]);
+		username = string(argv[1]);
 
 		size_t pos = username.find(" ");
 		if(pos != string::npos){
