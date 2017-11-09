@@ -367,7 +367,7 @@ public:
 			//we detect a dead process, first we check if the server is down
 			if(isMaster == true && isServerConnector == true){
 				slaveServerStatus[dest_server_id] = 0;
-				sleep(1);
+				sleep(5);
 				
 				if(slaveServerStatus[dest_server_id] == 0){
 						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
@@ -1103,7 +1103,7 @@ void* heartBeatDetector(void* destAddr){
 	}
 	localConnect.push_back(server_connect);
 	while(true){
-		sleep(1);
+		sleep(3);
 		std::string serverHeartBeatReply = server_connect->ProcHeartBeat(dest_addr);
 	//	std::cout << serverHeartBeatReply << std::endl;
 	//	sleep(10000000);
