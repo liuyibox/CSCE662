@@ -61,7 +61,7 @@ std::string localHostName="localhost";
 std::string masterServerAddr="lenss-comp1.cse.tamu.edu";
 std::string masterConnectorPort="6004";
 
-
+//Used by Master Process to store the address of PrimaryWorker
 std::string prevP1 = "";
 std::string prevP2 = "";
 
@@ -73,6 +73,7 @@ std::vector<ServerConnect*> localConnect;
 
 ServerConnect* masterPrimaryWorker;
 
+//current PrimaryWorker Info
 struct primaryWorkerInfo{
     std::string hostname;
     int connected_clients;
@@ -276,8 +277,7 @@ void ModifyTimeLine(std::string msg, std::string username){
     }
     outfile.close();
     file.close();
-    //std::string temp = username + ".txt";
-    //const char *k = temp.c_str();
+    
     const char *k = filename.c_str();
     rename(k, "del.txt");
     rename("in2.txt", k);
@@ -477,6 +477,8 @@ public:
 		std::cout<< "failed at Synchronizing Database\n";
 		abort();
     }
+    
+    //update posts history
     void updateTimeLine(std::string post, std::string username){
 		ClientContext context;
 		DataSync primaryUpdateRequest;
@@ -491,6 +493,7 @@ public:
 		abort();
     }
     
+    //forward msgs to the follwers
     void msgForward(std::string msg, std::string username, std::string targetname){
 		ClientContext context;
 		DataSync primaryMsgRequest;
@@ -544,16 +547,15 @@ class ServerConnectImpl final:public RegisterServer::Service{
 		return Status::OK;
   	}
 	Status Election(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
-//		std::cout << localPort+"get election request from " + request->message() <<std::endl;
 		if(((int)(request->id())) == serverID){
-			//if(localPort.compare(request->message()) < 0)	reply->set_message(localPort);
 			reply->set_message(localPort);
 		}else{
 			std::cout << "!!!request server is " << (int)(request->id()) <<", my server is serverID!!!" << std::endl;
 		}
-//		std::cout << localPort+"have voted " <<std::endl;
 		return Status::OK;
 	}
+    
+    
     Status msgForward(ServerContext* context, const DataSync* request, ServerReply* reply) override {
         std::string msg = request->message();
         std::string username = request->username();
@@ -568,6 +570,8 @@ class ServerConnectImpl final:public RegisterServer::Service{
                 temp_client.stream->Write(post);
         }
         
+        
+        //Propogate to other Primary Worker
         if(isMaster == true && isServerConnector==true){
             if(request->servername() == "server1"){
                 std::string address = getLeader2();
@@ -615,7 +619,7 @@ class ServerConnectImpl final:public RegisterServer::Service{
       rename("in2.txt", k);
       remove("del.txt");//Delete temp txt
       
-      //propagate to other server
+      //propagate to other Primaryserver
       if(isMaster == true && isServerConnector==true){
           if(request->servername() == "server1"){
               std::string address = getLeader2();
@@ -784,6 +788,8 @@ class FBChatServerImpl final : public FBChatServer::Service {
           std::cout<< "Master side" + request->username() <<std::endl;
           std::string primaryWorkerAddress;
           
+          
+          //allocate clent to a Primary Worker which connecting fewer clients
           p_worker_info[0].hostname = getLeader1();
           p_worker_info[1].hostname = getLeader2();
           
