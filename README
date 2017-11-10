@@ -1,9 +1,22 @@
 HOW TO RUN
 
-1. make
+We should note that the operation on Lenss1 should always be started first, the client also needs to
+be started on Lenss1
 
-2. ./fbsd portnum    /*start server first*/
-3. ./fbc localhost portnum <username>    /*start your client*/
+Step1 On Lenss1:
+1. make
+2. ./fbsd server.sh masterServer    /*start master server first*/
+
+Step2 on Lenss3:
+1. make
+2. ./fbsd server.sh server1         /*start 1st slave server*/
+
+Step3 on Lenss4:
+1. make
+2. ./fbsd server.sh server2         /*start 2nd slave server*/
+
+Step4 on Lenss1:
+3. ./fbc <username>                 /*start your client*/
 
     ////////////////////////////////////////////////////
     PLEASE DO NOT INCLUDE SPACE OR '~' IN YOUR USERNAME
