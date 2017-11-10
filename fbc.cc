@@ -215,7 +215,7 @@ void Alive(){
 	alive = false;
 }
 
-//check if it is the master
+//check if the possible address is the master server
 string Check(){
 	ClientContext context;
 	ServerReply reply;
@@ -225,15 +225,13 @@ string Check(){
     cout<< reply.message() <<endl;
 	if(status.ok() && reply.message() == "isMaster") return "Master";
     else return "Neg";
-	//if not alive
-	
+    
 }
 
 private:
 	string username;
 	unique_ptr<FBChatServer::Stub> clientStub;
 };
-
 
 Client *connect_to_master;
 Client *connect_to_server;
@@ -277,11 +275,7 @@ void *checkAlive(void *ptr){
 
 int main(int argc, char** argv) {
 
-	string hostname, port_number, username;
-	if(argc != 4) {
-		cout << "Usage: ./fbc <hostname> <port> <username>\n";
-		abort();
-	}else{
+	    string username;
 		username = string(argv[1]);
 
 		size_t pos = username.find(" ");
@@ -295,11 +289,15 @@ int main(int argc, char** argv) {
 			cout << "your username contains a \"~\"\n";
 			abort();
 		}
-	}
+        
     while(1){
         
     bool isMaster = false;
+    
     int count = 3;
+    
+    //We have three possible Master address
+    //if one is connected and return the valid reply, go to next step
     while(!isMaster){
         for(string info: possibleMaster){
         string info_connection = info;
@@ -318,13 +316,12 @@ int main(int argc, char** argv) {
         }
         }
     }
-    
     cout << "Connecting to Master \n";
     string primary_worker_address = connect_to_master->Connect(username);
     cout << primary_worker_address << endl;
     
     
-    //get the port of Primary Worker and connect to the Primary Worker
+    //get the address and port of Primary Worker from Master Server and connect to the Primary Worker Process
     cout << "Redirecting to Primary Worker\n";
     shared_ptr<Channel> channel_primary = grpc::CreateChannel(primary_worker_address, grpc::InsecureChannelCredentials());
     
@@ -339,13 +336,13 @@ int main(int argc, char** argv) {
 		return 0;
 	}
     
-    
   
 	cout << login_reply << endl;
 	cout << "====================You are now in command mode======================\n" ;
     
     
-    //create a thread to check primary is alive?
+    //create a thread to check primary is alive
+    //Flag alive indicate if connected primary worker is alive
     alive = true;
     pthread_t tid;
     pthread_create(&tid, NULL, checkAlive, NULL);
