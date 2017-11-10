@@ -64,10 +64,9 @@ std::string masterConnectorPort="6004";
 
 std::string prevP1 = "";
 std::string prevP2 = "";
-//string ServerHostAddr[3];
+
 int serverID = 0;
 int slaveServerStatus[3];	//0-master,1-server1,2-server2, this indicates if server is on
-//int serverMonitored[3];		//0-master,1-server1,2-server2, this indicates if processes on each is monitored
 std::vector<std::vector<std::string>> heartBeatCandidate;
 std::vector<ServerConnect*> dataConnectVect;
 std::vector<ServerConnect*> localConnect;
@@ -99,6 +98,7 @@ int find_user(std::string username){
     return -1;
 }
 
+//this returns server id with given port address
 int find_server_ID(std::string addr){
 	
 	if(addr.compare("lenss-comp1.cse.tamu.edu:6004") <= 0) return 0;
@@ -107,8 +107,9 @@ int find_server_ID(std::string addr){
 
 }
 
+//this detects if the given input address is leader 
+//on the same machine
 bool isLeaderDown(std::string addr){
-//    int down_id = find_server_ID(addr);
     if(addr.compare(leaderAddr) == 0)
         return true;
     else
@@ -130,9 +131,7 @@ void writeLeader2(std::string str){
 std::string getLeader1(){
 	std::string rv;
 	std::fstream readfile("leader1.txt");
-//	while(readfile.eof == false){
 	std::getline(readfile, rv);
-//	}
 	readfile.close();
 	return rv;
 }
@@ -140,9 +139,7 @@ std::string getLeader1(){
 std::string getLeader2(){
 	std::string rv;
 	std::fstream readfile("leader2.txt");
-//	while(readfile.eof == false){
 	std::getline(readfile, rv);
-//	}
 	readfile.close();
 	return rv;
 }
@@ -288,19 +285,7 @@ void ModifyTimeLine(std::string msg, std::string username){
     return;
 }
 
-void* startSlaveServer(void* desServerId){
-	int dest_server_id = *((int*)desServerId);
-	std::string cmd;
-	if(dest_server_id == 1){
-		cmd = "bash server.sh server1";
-	}else{
-		cmd = "bash server.sh server2";	
-	}
-	
-	if(std::system(cmd.c_str()) == -1) std::cout<< "failed when execute <" + cmd + ">" << std::endl;
-}
-
-
+//this function is called when leader wants to restart a new slave process
 void* startSlaveProc(void* destAddr){
 	std::string dest_addr = *(static_cast<std::string*>(destAddr));
 	std::string dest_port = find_port(dest_addr);
@@ -314,10 +299,8 @@ void* startSlaveProc(void* destAddr){
 	}
 	cmd += " -i " + std::to_string(serverID);
 	printf("%s\n",cmd.c_str());
-//	printf("\n");
 	
 	if(std::system(cmd.c_str()) == -1) std::cout<< "failed when execute <" + cmd + ">" << std::endl;
-//	sleep(5);
 }
 
 
@@ -330,13 +313,13 @@ public:
 		serverName = server_Name;
 		localPortName = local_Port_Name;
 	}
+	
+	//each process call this function at least once to monitor other processe(s)
 	std::string ProcHeartBeat(std::string destAddr){
 		ClientContext context;
 		ServerReply heartBeatRequest;
 		ServerReply heartBeatReply;
-	//	if(isMaster == true && isLeader == true){
-			heartBeatRequest.set_leader(0);
-	//	}
+		heartBeatRequest.set_leader(0);
 		heartBeatRequest.set_message("?");
 		heartBeatRequest.set_portnum(localPort);
 
@@ -351,12 +334,9 @@ public:
 			
 			if(isMaster == true && isServerConnector == true){
 				if(heartBeatReply.leader() == 1){
-                 //   std::cout << "leader on server " << dest_server_id << " is " + destAddr << std::endl;
-				//	if(!destAddr.compare((heartBeatCandidate[dest_server_id])[0])){
-						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
-						newfile << destAddr;
-						newfile.close();			
-				//	}
+					std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
+					newfile << destAddr;
+					newfile.close();			
 				}
 			}
 
@@ -364,8 +344,7 @@ public:
 			return heartBeatReply.message();
 		}
 		else{
-		//	std::cout << localPort + " detected a dead process at " + destAddr  << std::endl;
-			//we detect a dead process, first we check if the server is down
+
 			if(isMaster == true && isServerConnector == true){
 				slaveServerStatus[dest_server_id] = 0;
 				sleep(5);
@@ -374,12 +353,6 @@ public:
 						std::ofstream newfile("leader"+std::to_string(dest_server_id)+".txt");
 						newfile << " ";
 						newfile.close();
-				/*	std::cout << localPort + " detected server " << dest_server_id << " is down" << std::endl;
-					pthread_t startSlaveServer_id;
-					pthread_create(&startSlaveServer_id, NULL, startSlaveServer, (void*) &dest_server_id);
-					sleep(1);
-				//	startSlaveServer(dest_server_id);
-				*/
 				}
 			}
 
@@ -388,24 +361,19 @@ public:
 				pthread_create(&startSlaveProc_id, NULL, startSlaveProc, static_cast<void*>(&destAddr));
 				sleep(1);
 			}else if(dest_server_id == serverID && isLeader == false && isLeaderDown(destAddr) == true){
-			//	pthread_t startPrimaryProc_id;
-			//	std::cout << localPort << " is taking part of starting Primary process" << std::endl;
-			//	pthread_create(&startPrimaryProc_id, NULL, startPrimaryProc, static_cast<void*>(&destAddr));
-			//	sleep(1);
 				startPrimaryProc(destAddr);
-		//	}else if(dest_server_id == serverID && isMaster == false){
-		//		startPrimaryProc(destAddr);
 			}
 		}
 	}
 
+	//each time the slave server is on, W7 and W10 would register the slave machine
+	//so that the master machine would know that two slave mechines are turned on
 	std::string ServerRegister(){
 		ClientContext context;
 		ServerReply slaveServerRequest;
 		ServerReply masterServerReply;
 		slaveServerRequest.set_message(serverName);
 		slaveServerRequest.set_id(serverID);
-	//	std::cout<<"Hello World! from slave server"<<std::endl;
 		Status status = serverStub->ServerRegister(&context, slaveServerRequest, &masterServerReply);
 		if(status.ok()) {
 			return masterServerReply.message();	
@@ -414,6 +382,8 @@ public:
 		abort();
 	}
 
+	//each time primary workers are created, they would cooperate with each other to complete the
+	//process of election
 	std::string Election(){
 		ClientContext context;
 		ServerReply requestElection;
@@ -428,9 +398,10 @@ public:
 		abort();
 	}
 
+	//the function is called by newly elected leader to produce a slave process to take replace of 
+	//previous one
 	static void startPrimaryProc(std::string destAddr){
-	//	std::string dest_addr = *(static_cast<std::string*>(destAddr));	
-		
+
 		std::string dest_addr = destAddr;
 		if(!isServerConnector){
 			//once on the same machine, we do election
@@ -441,19 +412,15 @@ public:
 					if(!(election_connection.compare(localServer+localPort))) continue;
 					if(!(localConnect[i]->localPortName).compare(dest_addr)) continue;
 					ServerConnect *server_connect = localConnect[i];
-				//	std::shared_ptr<Channel> election_channel = grpc::CreateChannel(election_connection, grpc::InsecureChannelCredentials());
-				//	ServerConnect *server_connect = new ServerConnect(election_channel, localHostName, election_connection);
 					std::string electionReply = server_connect->Election();
-				//	std::cout << localPort << "get the voted message:" << electionReply << std::endl;
 					if((electionReply).compare(localPort) > 0){ 
-						//isLeader = true;
-						//std::cout << ", result is " << isLeader << std::endl;
+						
 					}else{
 						isLeader = false;
 					}
 				}
 			}
-			//sleep(5);
+
 			if(isLeader == true){
 				LoadDatabase();
 				std::cout << "leader " + localPort << " loaded database and is recreating a slave process to run at " << dest_addr << std::endl;
@@ -553,7 +520,6 @@ private:
 class ServerConnectImpl final:public RegisterServer::Service{
 	Status ProcHeartBeat(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
 		if(!(request->message().compare("?"))){
-		//	string temp_msg = 
 			if(isLeader == true){
 				reply->set_leader(1);
 			}
@@ -564,7 +530,6 @@ class ServerConnectImpl final:public RegisterServer::Service{
 		return Status::OK;
 	}
 	Status ServerRegister(ServerContext* context, const ServerReply* request, ServerReply* reply) override {
-	//	std::cout<<"Hello World! from master server"<<std::endl;
 		int request_server_id = (int)(request->id());
 		if (slaveServerStatus[request_server_id] == 0){
 			slaveServerStatus[request_server_id] = 1;
@@ -1055,9 +1020,7 @@ class FBChatServerImpl final : public FBChatServer::Service {
 
 void connectSetup(){
 
-	//process at 6007 & 6010 are responsible to register two slave servers
-//	if(isMaster==false){	
-		
+	//process at 6007 & 6010 are responsible to register two slave servers		
 	if(isMaster==false && isServerConnector==true){
 		std::string server_register_connection = masterServerAddr+":"+masterConnectorPort;
 		std::shared_ptr<Channel> server_register_channel = grpc::CreateChannel(server_register_connection,grpc::InsecureChannelCredentials());
@@ -1066,17 +1029,19 @@ void connectSetup(){
 		std::cout << serverRegisterReply << std::endl;
 	}
     
-    //if the process is the Primary Worker
-    //connect to the worker on the master server
-    if(isMaster == false && isServerConnector == false){
+	//if the process is the Primary Worker
+	//connect to the worker on the master server
+	if(isMaster == false && isServerConnector == false){
 		std::string masterPrimary = masterServerAddr + ":" + masterConnectorPort;
 		std::shared_ptr<Channel> primary_channel = grpc::CreateChannel(masterPrimary,grpc::InsecureChannelCredentials());
 		masterPrimaryWorker = new ServerConnect(primary_channel, localHostName,masterPrimary);
-    }
+	}
 	sleep(1);
 	
 }
 
+//each process periodically send signals to detect if the
+//process at target address is alive
 void* heartBeatDetector(void* destAddr){
 	std::string dest_addr = *(static_cast<std::string*>(destAddr));
 	std::string heart_beat_connection = dest_addr;
@@ -1089,15 +1054,12 @@ void* heartBeatDetector(void* destAddr){
 	while(true){
 		sleep(3);
 		std::string serverHeartBeatReply = server_connect->ProcHeartBeat(dest_addr);
-	//	std::cout << serverHeartBeatReply << std::endl;
-	//	sleep(10000000);
 	}
 	return 0;
 }
 
+//process monitor other processes
 void* runHeartBeat(void *invalid){
-//	printf("Master's port: %s", localPort.c_str());
-//	if(isMaster == false) return 0;
 	if(isMaster == false) {
 		for(int i=0; i < heartBeatCandidate[serverID].size(); i++){
 			std::string candidate = (heartBeatCandidate[serverID])[i];
@@ -1109,34 +1071,22 @@ void* runHeartBeat(void *invalid){
 	}
 
 	if(isMaster == true && isServerConnector == true){
-//		while(true){
-//			if(slaveServerStatus[1] == 1){
-				for(int i = 0; i < heartBeatCandidate[1].size(); i++){
-//					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
-					std::string candidate = (heartBeatCandidate[1])[i];
-					pthread_t thread_id;
-					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
-					sleep(1);
-				}
-//				break;				
-//			}
-//		}
-//		while(true){
-//			if(slaveServerStatus[2] == 1){
-				for(int i = 0; i < heartBeatCandidate[2].size(); i++){
-//					std::cout<<localPort+"should not print here when other two servers are on"<<std::endl;
-					std::string candidate = (heartBeatCandidate[2])[i];
-					pthread_t thread_id;
-					pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
-					sleep(1);
-				}
-//				break;				
-//			}
-//		}
+		for(int i = 0; i < heartBeatCandidate[1].size(); i++){
+			std::string candidate = (heartBeatCandidate[1])[i];
+			pthread_t thread_id;
+			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+			sleep(1);
+		}
+
+		for(int i = 0; i < heartBeatCandidate[2].size(); i++){
+			std::string candidate = (heartBeatCandidate[2])[i];
+			pthread_t thread_id;
+			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
+			sleep(1);
+		}
 	}
 	
 	if(isMaster == true && isServerConnector == false){	
-//		printf("This is master leader ready for monitoring\n");
 		for(int i=0; i < heartBeatCandidate[0].size(); i++){
 			std::string candidate = (heartBeatCandidate[0])[i];
 			if(!candidate.compare(localServer+localPort))	continue;
@@ -1144,19 +1094,9 @@ void* runHeartBeat(void *invalid){
 			pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
 			sleep(1);
 		}
-//		serverMonitored[0] = 1;
-	}
+	}	
 
-//	if(isMaster == true && isLeader == false && isServerConnector == false){
-//		printf("This is master replica ready for monitoring\n");
-//		std::string candidate = (heartBeatCandidate[0])[0];	//replica monitors the master process
-//		pthread_t thread_id;
-//		pthread_create(&thread_id, NULL, &heartBeatDetector, static_cast<void*>(&candidate));
-//		sleep(1);
-//	}
-		
 	return 0;
-
 }
 
 
@@ -1165,13 +1105,13 @@ void* runHeartBeat(void *invalid){
 void* ListenHeartBeat(void* invalid){
 	std::string server_address = localServer+localPort;
 	ServerConnectImpl serverConnectService;
-    FBChatServerImpl service;
+    	FBChatServerImpl service;
     
 	ServerBuilder builder;
 	builder.AddListeningPort(server_address,grpc::InsecureServerCredentials());
     
-    //Primary worker or Master should connect with client
-    if((!isMaster) || (isMaster && !isServerConnector)) builder.RegisterService(&service);
+	//Primary worker or Master should connect with client
+	if((!isMaster) || (isMaster && !isServerConnector)) builder.RegisterService(&service);
 	builder.RegisterService(&serverConnectService);
 	std::unique_ptr<Server> server(builder.BuildAndStart());
 	std::cout << "port: " << localPort << " is listening with process id:" << getpid() <<std::endl;
@@ -1200,8 +1140,8 @@ int main(int argc, char** argv) {
 
 
 
-    // Parses options that start with '-' and adding ':' makes it mandontory
-      int opt = 0;
+	// Parses options that start with '-' and adding ':' makes it mandontory
+	int opt = 0;
 
 	while((opt=getopt(argc, argv, "p:l:m:c:h:s:i:")) != -1){
 		switch(opt){
@@ -1215,13 +1155,11 @@ int main(int argc, char** argv) {
 			default: std::cerr << "Please enter valid command\n";
 		}
 	}	
-//      std::string port;
-//      port = argv[1];
 	if(isServerConnector == 1){
 		slaveServerStatus[0] = 1;	
 		slaveServerStatus[serverID] = 1;
 	}
-	
+
 	if(isMaster == true && isLeader == true){
 		for(int i = 0; i < heartBeatCandidate.size(); i++){
 			std::ofstream out("leader"+std::to_string(i)+".txt");
@@ -1229,7 +1167,7 @@ int main(int argc, char** argv) {
 			out.close();
 		}
 	}
-    
+
 	if(serverID == 0)
 		localServer="lenss-comp1.cse.tamu.edu:";
 	else if(serverID == 1)
@@ -1239,33 +1177,30 @@ int main(int argc, char** argv) {
 	else
 		std::cout << "your server id is not correct!" << std::endl;
 	std::cout << localServer;
-	
+
 	pthread_t thread_id, heartBeatThread_id, runServerThread_id ;
 	pthread_create(&thread_id, NULL, ListenHeartBeat, (void*) NULL);
 
-	
-    connectSetup();		//this function is mainly set for worker7 and worker10
+
+	connectSetup();		//this function is mainly set for worker7 and worker10
 	sleep(1);
-//	printf("Master's port: %s\n", localPort.c_str());
+
 	int rc = pthread_create(&heartBeatThread_id, NULL, runHeartBeat, (void*) NULL);
 	sleep(1);
-	
 
-  //cheack if database file is existed or not
-    std::string filename = localHostName + "client_database.txt";
-         if(!CheckFile(filename)){
-          std::ofstream fout(filename,std::ios::out);
-          fout.close();
-      }
-      
-//   std::cout << "Loading Database" << std::endl;
-   LoadDatabase();
-   std::cout << "Loading Successful" << std::endl;
-//	pthread_create(&runServerThread_id, NULL, RunServer, (void*) NULL);
-//	sleep(1);
-//  RunServer(localPort);
+
+	//cheack if database file is existed or not
+	std::string filename = localHostName + "client_database.txt";
+		if(!CheckFile(filename)){
+		std::ofstream fout(filename,std::ios::out);
+		fout.close();
+	}
+
+
+	LoadDatabase();
+	std::cout << "Loading Successful" << std::endl;
+
 	(void)pthread_join(thread_id, NULL);
 	(void)pthread_join(heartBeatThread_id, NULL);
-//	(void)pthread_join(runServerThread_id, NULL);
-  return 0;
+	return 0;
 }
